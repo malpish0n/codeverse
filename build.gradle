@@ -1,0 +1,58 @@
+allprojects {
+    group = 'dev.codeverse'
+    version = '0.1.0'
+    repositories { mavenCentral() }
+}
+subprojects {
+    apply plugin: 'java-library'
+    java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
+    tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+    dependencies {
+        testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+    test { useJUnitPlatform() }
+}
+project(':git-indexer') {
+    dependencies {
+        api project(':scene-model')
+        api 'org.eclipse.jgit:org.eclipse.jgit:7.8.0.202609011348-r'
+        runtimeOnly 'org.slf4j:slf4j-simple:2.0.17'
+    }
+}
+project(':code-analyzer') { dependencies { api project(':scene-model') } }
+project(':storage') {
+    dependencies {
+        api project(':scene-model')
+        implementation 'org.xerial:sqlite-jdbc:3.50.3.0'
+        api 'com.google.code.gson:gson:2.13.2'
+    }
+}
+project(':renderer-3d') {
+    dependencies {
+        api project(':scene-model')
+        api 'com.badlogicgames.gdx:gdx:1.14.2'
+    }
+}
+project(':desktop-ui') {
+    apply plugin: 'application'
+    application {
+        mainClass = 'dev.codeverse.desktop.Launcher'
+        applicationDefaultJvmArgs = System.getProperty('os.name').toLowerCase().contains('mac') ? ['-XstartOnFirstThread'] : []
+    }
+    dependencies {
+        implementation project(':git-indexer')
+        implementation project(':code-analyzer')
+        implementation project(':storage')
+        implementation project(':renderer-3d')
+        implementation 'com.badlogicgames.gdx:gdx-backend-lwjgl3:1.14.2'
+        implementation 'com.badlogicgames.gdx:gdx-freetype:1.14.2'
+        runtimeOnly 'com.badlogicgames.gdx:gdx-platform:1.14.2:natives-desktop'
+        runtimeOnly 'com.badlogicgames.gdx:gdx-freetype-platform:1.14.2:natives-desktop'
+        for (n in ['natives-macos-arm64','natives-macos','natives-windows','natives-linux','natives-linux-arm64']) {
+            for (m in ['lwjgl','lwjgl-glfw','lwjgl-jemalloc','lwjgl-openal','lwjgl-opengl','lwjgl-stb']) {
+                runtimeOnly "org.lwjgl:${m}:3.3.3:${n}"
+            }
+        }
+    }
+}

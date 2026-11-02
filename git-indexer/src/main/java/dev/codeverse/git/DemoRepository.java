@@ -1,0 +1,42 @@
+package dev.codeverse.git;
+
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.PersonIdent;
+import java.nio.file.*;
+import java.time.*;
+import java.util.*;
+
+/** Creates only the app-owned demonstration repository, never an imported repository. */
+public final class DemoRepository {
+    public static Path create(Path path) throws Exception {
+        if(Files.exists(path.resolve(".git")))return path;
+        Files.createDirectories(path);
+        try(Git git=Git.init().setDirectory(path.toFile()).setInitialBranch("main").call()){
+            String[] modules={"ui","application","domain","infra","analytics","tests"};
+            for(int step=0;step<12;step++){
+                for(int m=0;m<modules.length;m++){
+                    for(int n=0;n<4;n++){
+                        int index=step*4+n;Path file=path.resolve("src/"+modules[m]+"/"+"Component"+index+".java");Files.createDirectories(file.getParent());
+                        StringBuilder s=new StringBuilder("package demo."+modules[m]+";\n");
+                        if(m>0)s.append("import demo."+modules[m-1]+".Component"+index+";\n");
+                        s.append("public class Component"+index+" {\n");
+                        for(int k=0;k<5+(index*7+m*13)%90;k++)s.append("    // Demo revision "+step+", responsibility "+k+"\n");
+                        s.append("}\n");Files.writeString(file,s);
+                    }
+                    if(step>0)Files.writeString(path.resolve("src/"+modules[m]+"/Component0.java"),"// Changed during release "+step+"\n",StandardOpenOption.APPEND);
+                }
+                git.add().addFilepattern(".").call();
+                var who=new PersonIdent(step%2==0?"Alex Developer":"Sam Maintainer","demo@codeverse.local",Date.from(Instant.now().minusSeconds((12-step)*86400L)),TimeZone.getTimeZone("UTC"));
+                git.commit().setMessage(new String[]{"Lay the foundations","Introduce domain services","Build the application layer","Add data adapters","Ship the explorer","Refine navigation","Introduce analytics","Scale the scene","Improve history playback","Optimize the renderer","Add dependency insights","Prepare the release"}[step]).setAuthor(who).setCommitter(who).call();
+            }
+            git.branchCreate().setName("feature/observability").call();git.checkout().setName("feature/observability").call();
+            Path old=path.resolve("src/ui/Component1.java"),renamed=path.resolve("src/ui/ExplorerPanel.java");Files.move(old,renamed);
+            Files.delete(path.resolve("src/infra/Component2.java"));
+            Files.writeString(path.resolve("src/analytics/TraceCollector.java"),"package demo.analytics;\nimport demo.domain.Component0;\npublic class TraceCollector {\n // New tracing pipeline\n}\n");
+            Files.writeString(path.resolve("src/application/Component0.java"),"// Observability integration\n",StandardOpenOption.APPEND);
+            git.add().addFilepattern(".").call();git.add().setUpdate(true).addFilepattern(".").call();git.commit().setMessage("Add tracing, rename explorer, remove legacy adapter").setAuthor("Sam Maintainer","demo@codeverse.local").call();
+            git.checkout().setName("main").call();
+        }
+        return path;
+    }
+}

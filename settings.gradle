@@ -1,0 +1,2 @@
+rootProject.name = 'codeverse'
+include 'scene-model', 'git-indexer', 'code-analyzer', 'storage', 'renderer-3d', 'desktop-ui'
