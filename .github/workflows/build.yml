@@ -25,7 +25,7 @@ jobs:
       - name: Package self-contained application
         run: python scripts/package.py --type app-image --dest dist
       - name: Upload application and test reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: CODEVERSE-${{ runner.os }}-${{ runner.arch }}
           path: |
@@ -41,7 +41,7 @@ jobs:
           else
             python scripts/package.py --type deb --dest installers
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: runner.os != 'Windows'
         with:
           name: CODEVERSE-installer-${{ runner.os }}
