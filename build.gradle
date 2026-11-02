@@ -27,7 +27,7 @@ project(':storage') {
     dependencies {
         api project(':scene-model')
         implementation 'org.xerial:sqlite-jdbc:3.50.3.0'
-        api 'com.google.code.gson:gson:2.13.2'
+        api 'com.google.code.gson:gson:2.15.0'
     }
 }
 project(':renderer-3d') {
