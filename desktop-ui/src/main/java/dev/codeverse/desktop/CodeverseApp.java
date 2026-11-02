@@ -219,6 +219,21 @@ public final class CodeverseApp extends ApplicationAdapter {
     stage.addCaptureListener(
         new InputListener() {
           public boolean keyDown(InputEvent event, int key) {
+            Actor focused = stage.getKeyboardFocus();
+            if (focused instanceof CheckBox box
+                && (key == Input.Keys.ENTER || key == Input.Keys.SPACE)) {
+              box.setChecked(!box.isChecked());
+              event.stop();
+              return true;
+            }
+            if (focused instanceof Slider slider
+                && (key == Input.Keys.LEFT || key == Input.Keys.RIGHT)) {
+              slider.setValue(
+                  slider.getValue()
+                      + (key == Input.Keys.RIGHT ? slider.getStepSize() : -slider.getStepSize()));
+              event.stop();
+              return true;
+            }
             if (key != Input.Keys.TAB) return false;
             java.util.List<Actor> controls = new ArrayList<>();
             Group root = stage.getRoot();
@@ -814,12 +829,23 @@ public final class CodeverseApp extends ApplicationAdapter {
     return j == q.length();
   }
 
+  private FileRevision selectedRevision() {
+    var building = city.selected();
+    if (building != null) return building.file;
+    if (snapshot == null || selected == null) return null;
+    return snapshot.files().stream()
+        .filter(file -> file.path().equals(selected))
+        .findFirst()
+        .orElse(null);
+  }
+
   private void select(String path) {
     selected = path;
     city.select(path);
     comparisonCity.select(path);
     var b = city.selected();
-    if (b == null) {
+    var f = selectedRevision();
+    if (f == null) {
       inspector.setText(
           "Select a building\n"
               + "to inspect its source metrics.\n\n"
@@ -830,7 +856,6 @@ public final class CodeverseApp extends ApplicationAdapter {
       city.highlight(Set.of());
       return;
     }
-    var f = b.file;
     var h = hotspots.getOrDefault(path, new Hotspot(0, 0, 0, 0));
     inspector.setText(
         f.path()
@@ -852,10 +877,10 @@ public final class CodeverseApp extends ApplicationAdapter {
             + h.linesChanged()
             + " lines changed\nWindow: "
             + hotspotDays
-            + " days\nHistory cap: 2,000 commits\nScore: "
+            + " days\nRef: HEAD at last calculation\nHistory cap: 2,000 commits\nScore: "
             + String.format(Locale.ROOT, "%.3f", h.score())
             + " (normalized)\n"
-            + (b.change.isEmpty() ? "" : "\nDIFF: " + b.change));
+            + (b == null || b.change.isEmpty() ? "" : "\nDIFF: " + b.change));
     if (showEdges)
       city.highlight(
           Dependencies.reach(
@@ -911,7 +936,7 @@ public final class CodeverseApp extends ApplicationAdapter {
     branchA.setItems(refs);
     branchB = new SelectBox<>(skin);
     branchB.setItems(refs);
-    if (refs.length > 1) branchB.setSelectedIndex(refs.length - 1);
+    if (refs.length > 1) branchB.setSelectedIndex(1);
     mergeBase = new CheckBox("  Compare merge-base(A,B) → B (A...B)", skin);
     Table c = d.getContentTable();
     c.add(label("A", MUTED)).pad(12);
@@ -1273,17 +1298,17 @@ public final class CodeverseApp extends ApplicationAdapter {
   }
 
   private void sourceDialog() {
-    var b = city.selected();
-    if (b == null) return;
-    Dialog d = new Dialog(b.file.path(), skin);
-    TextArea source =
-        new TextArea(
-            b.file.source().isEmpty()
-                ? "Source unavailable for " + b.file.kind()
-                : b.file.source().substring(0, Math.min(100000, b.file.source().length())),
+    var revision = selectedRevision();
+    if (revision == null) return;
+    String reference = snapshot.sha();
+    Dialog d = new Dialog(revision.path(), skin);
+    Label source =
+        new Label(
+            revision.source().isEmpty()
+                ? "Source unavailable for " + revision.kind()
+                : revision.source().substring(0, Math.min(100000, revision.source().length())),
             skin);
-    source.setDisabled(true);
-    d.getContentTable().add(source).width(780).height(440).pad(12).row();
+    d.getContentTable().add(new ScrollPane(source, skin)).width(780).height(440).pad(12).row();
     d.getContentTable()
         .add(
             button(
@@ -1291,12 +1316,12 @@ public final class CodeverseApp extends ApplicationAdapter {
                 () -> {
                   d.hide();
                   Path p = repoPath;
-                  String file = b.file.path();
+                  String file = revision.path();
                   runTask(
                       "Reading file history",
                       () -> {
                         try (var idx = new RepositoryIndex(p)) {
-                          return idx.fileHistory("HEAD", file);
+                          return idx.fileHistory(reference, file);
                         }
                       },
                       commits -> {
