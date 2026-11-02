@@ -27,10 +27,8 @@ if platform.system() == 'Windows' and args.type != 'app-image':
 subprocess.run(command, check=True)
 if platform.system() == 'Darwin' and args.type == 'app-image':
     app = dest / 'CODEVERSE.app'
-    try:
-        os.removexattr(app, 'com.apple.FinderInfo')
-    except OSError:
-        pass
+    subprocess.run(['xattr', '-d', 'com.apple.FinderInfo', str(app)],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
     subprocess.run(['codesign', '--force', '--deep', '--sign', '-', str(app)], check=True)
 for file in dest.iterdir():
     if file.is_file() and file.suffix != '.sha256':
