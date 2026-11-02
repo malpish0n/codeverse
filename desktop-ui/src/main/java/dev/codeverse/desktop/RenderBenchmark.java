@@ -17,6 +17,7 @@ public final class RenderBenchmark extends ApplicationAdapter {
   private CityRenderer city;
   private int frame;
   private final List<Double> times = new ArrayList<>();
+  private final List<Double> animatedTimes = new ArrayList<>();
   private long last;
 
   public RenderBenchmark(int count, Path output) {
@@ -53,19 +54,20 @@ public final class RenderBenchmark extends ApplicationAdapter {
     long now = System.nanoTime();
     double ms = (now - last) / 1e6;
     last = now;
-    if (frame > 180) times.add(ms);
+    if (frame > 180 && frame < 360) times.add(ms);
+    if (frame > 360) animatedTimes.add(ms);
+    if (frame >= 360) {
+      city.exploded = (frame / 90) % 2 == 0;
+      city.tour = true;
+    }
     ScreenUtils.clear(Color.valueOf("090E19"), true);
-    city.render(
-        Math.min(.05f, Gdx.graphics.getDeltaTime()),
-        0,
-        0,
-        Gdx.graphics.getWidth(),
-        Gdx.graphics.getHeight());
+    city.render(1f / 60f, 0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
     frame++;
-    if (frame == 360) {
+    if (frame == 720) {
       try {
         Files.createDirectories(output);
         Collections.sort(times);
+        Collections.sort(animatedTimes);
         double p50 = times.get(times.size() / 2), p95 = times.get((int) (times.size() * .95));
         Files.writeString(
             output.resolve("render-" + count + ".json"),
@@ -79,6 +81,10 @@ public final class RenderBenchmark extends ApplicationAdapter {
                 + p50
                 + ",\"frameMsP95\":"
                 + p95
+                + ",\"animatedFrameMsP95\":"
+                + animatedTimes.get((int) (animatedTimes.size() * .95))
+                + ",\"animatedMeasuredFrames\":"
+                + animatedTimes.size()
                 + ",\"heapUsedBytes\":"
                 + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory())
                 + ",\"gpu\":\""
