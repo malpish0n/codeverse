@@ -2,6 +2,7 @@ package dev.codeverse.render;
 
 import com.badlogic.gdx.*;
 import com.badlogic.gdx.graphics.*;
+import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.g3d.*;
 import com.badlogic.gdx.graphics.g3d.attributes.*;
 import com.badlogic.gdx.graphics.g3d.environment.DirectionalLight;
@@ -15,6 +16,10 @@ import java.util.*;
 public final class CityRenderer implements AutoCloseable {
     public final PerspectiveCamera camera=new PerspectiveCamera(48,1280,800);
     private final ModelBatch batch=new ModelBatch();
+    private final ModelCache staticCache=new ModelCache();
+    private boolean cacheReady=false, previousExploded=false, previousHeat=false;
+    private float quiet=0, previousSpacing=85, tourTime=0;
+    private int tourStop=-1;
     private final Environment light=new Environment();
     private final Model cube;
     private final Map<String,Building> buildings=new LinkedHashMap<>();
@@ -41,6 +46,7 @@ public final class CityRenderer implements AutoCloseable {
         camera.near=1;camera.far=30000;
     }
     public void setScene(Snapshot snap,Map<String,Cell> cells,java.util.List<Change> changes,Map<String,Hotspot> hotspots,boolean reset){
+        invalidate();
         Set<String> live=new HashSet<>();Map<String,String> diff=new HashMap<>();
         for(var d:changes)diff.put(d.type().equals("DELETE")?d.oldPath():d.newPath(),d.type());
         for(var f:snap.files()){
@@ -63,10 +69,10 @@ public final class CityRenderer implements AutoCloseable {
         Vector3 dim=new Vector3();box.getDimensions(dim);sceneRadius=Math.max(160,Math.max(dim.x,dim.z)*.65f);
     }
     public void reset(){target.set(center);distance=sceneRadius*2.4f+200;yaw=42;pitch=44;}
-    public void focus(String path){var b=buildings.get(path);if(b!=null){target.set(b.cell.x(),b.goal/2+b.cell.layer()*spacing*explode,b.cell.z());distance=230;selected=path;}}
-    public void select(String path){selected=path;}
-    public void highlight(Set<String> paths){highlight=paths;}
-    public void isolate(String module){isolated=module;}
+    public void focus(String path){invalidate();var b=buildings.get(path);if(b!=null){target.set(b.cell.x(),b.goal/2+b.cell.layer()*spacing*explode,b.cell.z());distance=230;selected=path;}}
+    public void select(String path){if(!Objects.equals(selected,path))invalidate();selected=path;}
+    public void highlight(Set<String> paths){highlight=paths;invalidate();}
+    public void isolate(String module){isolated=module;invalidate();}
     public Collection<Building> buildings(){return buildings.values();}
     public Building selected(){return buildings.get(selected);}
     public Vector3 target(){return target;}
@@ -77,22 +83,38 @@ public final class CityRenderer implements AutoCloseable {
         Vector3 f=new Vector3(camera.direction.x,0,camera.direction.z).nor(),r=new Vector3(f).crs(Vector3.Y);
         target.mulAdd(f,forward*speed).mulAdd(r,right*speed);
     }
+    public void invalidate(){cacheReady=false;quiet=0;}
     public void render(float dt,int left,int bottom,int width,int height){
+        if(previousExploded!=exploded||previousHeat!=heat||previousSpacing!=spacing){invalidate();previousExploded=exploded;previousHeat=heat;previousSpacing=spacing;}
+        quiet+=dt;
         time+=dt;explode=MathUtils.lerp(explode,exploded?1:0,reducedMotion?1:Math.min(1,dt*7));
-        if(tour&&!reducedMotion)yaw+=dt*9;
+        if(tour&&!reducedMotion){
+            tourTime+=dt;int stop=(int)(tourTime/5);
+            if(stop!=tourStop&&!buildings.isEmpty()){
+                tourStop=stop;
+                var points=buildings.values().stream().sorted(Comparator.comparingDouble((Building b)->-b.hotspot).thenComparing(b->b.file.path())).limit(5).toList();
+                var point=points.get(stop%points.size());
+                target.set(point.cell.x(),point.goal*.6f+point.cell.layer()*spacing*explode,point.cell.z());
+                distance=280; pitch=28;
+            }
+            yaw+=dt*11;
+        } else {tourTime=0;tourStop=-1;}
         float yr=yaw*MathUtils.degreesToRadians,pr=pitch*MathUtils.degreesToRadians;
         Vector3 pos=new Vector3(target.x+distance*MathUtils.cos(pr)*MathUtils.cos(yr),target.y+distance*MathUtils.sin(pr),target.z+distance*MathUtils.cos(pr)*MathUtils.sin(yr));
         camera.position.lerp(pos,reducedMotion?1:Math.min(1,dt*8));
         // Keep the camera outside visible building volumes.
         for(var b:buildings.values())if(Math.abs(camera.position.x-b.cell.x())<25&&Math.abs(camera.position.z-b.cell.z())<25)camera.position.y=Math.max(camera.position.y,b.height+b.cell.layer()*spacing*explode+20);
         camera.viewportWidth=width;camera.viewportHeight=height;camera.up.set(Vector3.Y);camera.lookAt(target);camera.update();
-        Gdx.gl.glViewport(left,bottom,width,height);Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
-        batch.begin(camera);for(var g:ground)batch.render(g,light);
+        HdpiUtils.glViewport(left,bottom,width,height);Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        if(cacheReady){batch.begin(camera);batch.render(staticCache,light);batch.end();HdpiUtils.glViewport(0,0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());return;}
+        boolean buildCache=quiet>1.1f;
+        if(buildCache)staticCache.begin();
+        batch.begin(camera);for(var g:ground){if(buildCache)staticCache.add(g);batch.render(g,light);}
         for(var b:buildings.values()){
             b.height=MathUtils.lerp(b.height,b.goal,reducedMotion?1:Math.min(1,dt*8));float y=b.cell.layer()*spacing*explode;
             float w=b.cell.width();
             b.bounds.set(new Vector3(b.cell.x()-w/2,y,b.cell.z()-w/2),new Vector3(b.cell.x()+w/2,y+b.height,b.cell.z()+w/2));
-            if(!camera.frustum.boundsInFrustum(b.bounds))continue;
+            boolean visible=camera.frustum.boundsInFrustum(b.bounds);
             boolean sel=b.file.path().equals(selected);Color col=color(b);
             if(isolated!=null&&!isolated.equals(b.file.module()))col.mul(.25f);
             if(sel)col=cyan.cpy();else if(highlight.contains(b.file.path()))col=violet.cpy();
@@ -100,9 +122,10 @@ public final class CityRenderer implements AutoCloseable {
             b.body.transform.setToTranslationAndScaling(b.cell.x(),y+b.height/2,b.cell.z(),w,b.height,w);
             b.roof.materials.get(0).set(ColorAttribute.createDiffuse(sel?Color.WHITE:col.cpy().lerp(cyan,.45f)));
             b.roof.transform.setToTranslationAndScaling(b.cell.x(),y+b.height+.8f,b.cell.z(),w+1,1.6f,w+1);
-            batch.render(b.body,light);batch.render(b.roof,light);
+            if(buildCache){staticCache.add(b.body);staticCache.add(b.roof);}
+            if(visible){batch.render(b.body,light);batch.render(b.roof,light);}
         }
-        batch.end();Gdx.gl.glViewport(0,0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
+        batch.end();if(buildCache){staticCache.end();cacheReady=true;}HdpiUtils.glViewport(0,0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
     }
     private Color color(Building b){
         if(b.change.equals("ADD"))return cyan.cpy();if(b.change.equals("DELETE"))return Color.valueOf("EC7885");if(!b.change.isEmpty())return violet.cpy();
@@ -114,5 +137,5 @@ public final class CityRenderer implements AutoCloseable {
         for(var b:buildings.values())if(Intersector.intersectRayBounds(ray,b.bounds,hit)){float d=hit.dst2(camera.position);if(d<nearest){nearest=d;found=b.file.path();}}
         return found;
     }
-    public void close(){batch.dispose();cube.dispose();for(Model m:owned)m.dispose();}
+    public void close(){staticCache.dispose();batch.dispose();cube.dispose();for(Model m:owned)m.dispose();}
 }

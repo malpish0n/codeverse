@@ -38,7 +38,7 @@ project(':desktop-ui') {
     apply plugin: 'application'
     application {
         mainClass = 'dev.codeverse.desktop.Launcher'
-        applicationDefaultJvmArgs = System.getProperty('os.name').toLowerCase().contains('mac') ? ['-XstartOnFirstThread'] : []
+        applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED'] + (System.getProperty('os.name').toLowerCase().contains('mac') ? ['-XstartOnFirstThread'] : [])
     }
     dependencies {
         implementation project(':git-indexer')
@@ -47,10 +47,11 @@ project(':desktop-ui') {
         implementation project(':renderer-3d')
         implementation 'com.badlogicgames.gdx:gdx-backend-lwjgl3:1.14.2'
         implementation 'com.badlogicgames.gdx:gdx-freetype:1.14.2'
+        implementation 'org.lwjgl:lwjgl-tinyfd:3.3.3'
         runtimeOnly 'com.badlogicgames.gdx:gdx-platform:1.14.2:natives-desktop'
         runtimeOnly 'com.badlogicgames.gdx:gdx-freetype-platform:1.14.2:natives-desktop'
         for (n in ['natives-macos-arm64','natives-macos','natives-windows','natives-linux','natives-linux-arm64']) {
-            for (m in ['lwjgl','lwjgl-glfw','lwjgl-jemalloc','lwjgl-openal','lwjgl-opengl','lwjgl-stb']) {
+            for (m in ['lwjgl','lwjgl-glfw','lwjgl-jemalloc','lwjgl-openal','lwjgl-opengl','lwjgl-stb','lwjgl-tinyfd']) {
                 runtimeOnly "org.lwjgl:${m}:3.3.3:${n}"
             }
         }

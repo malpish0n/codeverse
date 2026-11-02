@@ -4,6 +4,7 @@ import com.badlogic.gdx.*;
 import com.badlogic.gdx.graphics.*;
 import com.badlogic.gdx.graphics.g2d.*;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.g3d.*;
 import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute;
 import com.badlogic.gdx.graphics.g3d.utils.ModelBuilder;
@@ -39,20 +40,28 @@ public final class CodeverseApp extends ApplicationAdapter {
     private java.util.List<Edge> edges=java.util.List.of();
     private Map<String,Hotspot> hotspots=Map.of();
     private Label status,repoLabel,metrics,commitLabel,inspector,header,diagnostics;
-    private Table filesTable,side,inspect,top,bottom;
+    private Table filesTable,side,inspect,top,bottom,inspectPanel;
     private TextField search; private SelectBox<String> branchA,branchB,window,depth,direction,speed;
     private Slider timeline,spacing; private CheckBox mergeBase,reduced,anonymous;
     private String selected,activeView="Overview"; private boolean busy=false,playing=false,diagnostic=false,suppress=false,follow=false,showEdges=false,dag=false;
     private float playClock=0; private int currentCommit=0; private final String initial;
     private ArrayDeque<Float> frameTimes=new ArrayDeque<>(); private long indexStarted;
     private String[] refs={"HEAD"};
-    public static class Preferences { public String lastRepo="";public boolean reducedMotion=false;public boolean anonymous=false; }
+    public static class Preferences { public String lastRepo="";public java.util.List<String> recent=new ArrayList<>();public boolean reducedMotion=false;public boolean anonymous=false; }
     public static class Bookmark {public String repo,sha,path;public float yaw,pitch,distance,x,y,z,spacing;public boolean exploded;}
     private Preferences preferences=new Preferences();
+    private static Path appData(){
+        String override=System.getProperty("codeverse.data");if(override!=null)return Path.of(override);
+        String os=System.getProperty("os.name").toLowerCase(Locale.ROOT),home=System.getProperty("user.home");
+        if(os.contains("mac"))return Path.of(home,"Library","Application Support","CODEVERSE");
+        if(os.contains("win"))return Path.of(System.getenv().getOrDefault("LOCALAPPDATA",home),"CODEVERSE");
+        return Path.of(System.getenv().getOrDefault("XDG_DATA_HOME",home+"/.local/share"),"codeverse");
+    }
+    public void dropped(String[] files){if(files.length>0)open(Path.of(files[0]));}
     public CodeverseApp(String initial){this.initial=initial;}
     @Override public void create(){
         stage=new Stage(new ScreenViewport());skin=createSkin();city=new CityRenderer();lines=new ShapeRenderer();
-        try{store=new Store(Path.of(System.getProperty("user.home"),".codeverse"));preferences=store.load("settings",Preferences.class,new Preferences());}
+        try{store=new Store(appData());preferences=store.load("settings",Preferences.class,new Preferences());}
         catch(Exception e){System.err.println("Cache unavailable: "+e.getMessage());}
         city.reducedMotion=preferences.reducedMotion;buildUI();
         Gdx.input.setInputProcessor(new InputMultiplexer(stage,new InputAdapter(){
@@ -93,7 +102,7 @@ public final class CodeverseApp extends ApplicationAdapter {
         var dialog=new Window.WindowStyle(font,TEXT,s.newDrawable("white",PANEL));s.add("default",dialog);return s;
     }
     private Label label(String text,Color color){Label l=new Label(text,skin);l.setColor(color);return l;}
-    private TextButton button(String text,Runnable action){TextButton b=new TextButton(text,skin);b.addListener(new ChangeListener(){public void changed(ChangeEvent e,Actor a){action.run();}});return b;}
+    private TextButton button(String text,Runnable action){TextButton b=new TextButton(text,skin);b.addListener(new ChangeListener(){public void changed(ChangeEvent e,Actor a){stage.setKeyboardFocus(null);action.run();}});return b;}
     private void on(Actor a,Runnable r){a.addListener(new ChangeListener(){public void changed(ChangeEvent e,Actor actor){if(!suppress)r.run();}});}
     private void buildUI(){
         top=new Table();top.setBackground(skin.newDrawable("white",PANEL));top.pad(18);stage.addActor(top);
@@ -107,9 +116,10 @@ public final class CodeverseApp extends ApplicationAdapter {
         search=new TextField("",skin);search.setMessageText("Search path / language");on(search,this::refreshFiles);side.add(search).growX().height(34).row();
         filesTable=new Table();filesTable.top().left();ScrollPane files=new ScrollPane(filesTable,skin);files.setFadeScrollBars(false);side.add(files).grow().padTop(12).row();
         side.add(button("Commands   Cmd/Ctrl + K",this::palette)).growX().height(34).padTop(12);
-        inspect=new Table();inspect.top().left().pad(20);inspect.setBackground(skin.newDrawable("white",PANEL));stage.addActor(inspect);
+        inspect=new Table();inspect.top().left().pad(20);inspect.setBackground(skin.newDrawable("white",PANEL));inspectPanel=new Table();inspectPanel.setBackground(skin.newDrawable("white",PANEL));ScrollPane inspectorScroll=new ScrollPane(inspect,skin);inspectorScroll.setFadeScrollBars(false);inspectPanel.add(inspectorScroll).grow();stage.addActor(inspectPanel);
         inspect.add(label("INSPECTOR",MUTED)).left().padBottom(18).row();
         inspector=label("Select a building\nto inspect its source metrics.\n\nDrag: orbit\nScroll: zoom\nW A S D: fly\nShift: boost\nF: focus   R: reset\nE: explode   T: drone",TEXT);inspector.setWrap(true);inspect.add(inspector).width(260).left().padBottom(16).row();
+        inspect.add(button("Source & file history",this::sourceDialog)).growX().height(32).padBottom(6).row();
         inspect.add(button("Focus selected   F",()->{if(selected!=null)city.focus(selected);})).growX().height(32).padBottom(6).row();
         inspect.add(button("Isolate module",()->{var b=city.selected();if(b!=null)city.isolate(b.file.module());})).growX().height(32).padBottom(6).row();
         inspect.add(button("Show all modules",()->city.isolate(null))).growX().height(32).padBottom(14).row();
@@ -135,6 +145,8 @@ public final class CodeverseApp extends ApplicationAdapter {
     private void openDialog(){
         Dialog d=new Dialog("Open a local Git repository",skin);TextField path=new TextField(repoPath==null?"":repoPath.toString(),skin);path.setMessageText("/path/to/repository");
         d.getContentTable().add(label("Repository root or bare repository. Read-only indexing.",MUTED)).pad(12).row();d.getContentTable().add(path).width(640).height(38).pad(12).row();
+        d.getContentTable().add(button("Choose folder…",()->{String chosen=org.lwjgl.util.tinyfd.TinyFileDialogs.tinyfd_selectFolderDialog("Open Git repository",System.getProperty("user.home"));if(chosen!=null)path.setText(chosen);})).height(34).pad(12).row();
+        if(preferences.recent!=null)for(String recent:preferences.recent)d.getContentTable().add(button(recent,()->{d.hide();open(Path.of(recent));})).width(640).height(28).pad(3).row();
         d.getContentTable().add(button("Open",()->{d.hide();open(Path.of(path.getText().strip()));})).height(34).pad(12);d.button("Cancel");d.show(stage);stage.setKeyboardFocus(path);
     }
     private void demo(){
@@ -149,7 +161,7 @@ public final class CodeverseApp extends ApplicationAdapter {
                 return new Loaded(s,h,index.refs(),hot);
             }
         },data->{snapshot=data.snapshot;history=data.history;refs=data.refs.toArray(String[]::new);hotspots=data.hotspots;changes=java.util.List.of();currentCommit=0;
-            repoLabel.setText(path.getFileName()+"  /  LOCAL");preferences.lastRepo=path.toString();savePrefs();display(true);});
+            repoLabel.setText(path.getFileName()+"  /  LOCAL");preferences.lastRepo=path.toString();if(preferences.recent==null)preferences.recent=new ArrayList<>();preferences.recent.remove(path.toString());preferences.recent.addFirst(path.toString());if(preferences.recent.size()>8)preferences.recent.removeLast();savePrefs();display(true);});
     }
     private record Loaded(Snapshot snapshot,java.util.List<CommitInfo> history,java.util.List<String> refs,Map<String,Hotspot> hotspots){}
     private Snapshot cached(RepositoryIndex index,String ref,int token)throws Exception{
@@ -241,6 +253,12 @@ public final class CodeverseApp extends ApplicationAdapter {
             repoPath=Path.of(b.repo);runTask("Restoring viewpoint",()->{try(var r=new RepositoryIndex(repoPath)){int token=generation.get();return new Loaded(cached(r,b.sha,token),r.history(b.sha,true,()->generation.get()!=token),r.refs(),r.hotspots(b.sha,90,()->generation.get()!=token));}},v->{layout.clear();snapshot=v.snapshot;history=v.history;refs=v.refs.toArray(String[]::new);hotspots=v.hotspots;changes=java.util.List.of();display(true);city.yaw=b.yaw;city.pitch=b.pitch;city.distance=b.distance;city.target().set(b.x,b.y,b.z);city.exploded=b.exploded;city.spacing=b.spacing;select(b.path);repoLabel.setText(repoPath.getFileName()+" / LOCAL");});
         })).width(200).height(36).pad(12);d.button("Close");d.show(stage);
     }
+    private void sourceDialog(){
+        var b=city.selected();if(b==null)return;Dialog d=new Dialog(b.file.path(),skin);
+        TextArea source=new TextArea(b.file.source().isEmpty()?"Source unavailable for "+b.file.kind():b.file.source().substring(0,Math.min(100000,b.file.source().length())),skin);source.setDisabled(true);
+        d.getContentTable().add(source).width(780).height(440).pad(12).row();
+        d.getContentTable().add(button("File commits",()->{d.hide();Path p=repoPath;String file=b.file.path();runTask("Reading file history",()->{try(var idx=new RepositoryIndex(p)){return idx.fileHistory("HEAD",file);}},commits->{Dialog h=new Dialog("File history / exact path (renames not followed)",skin);Table rows=new Table();for(var c:commits)rows.add(label(c.sha().substring(0,8)+"  "+c.message(),TEXT)).left().pad(6).row();h.getContentTable().add(new ScrollPane(rows,skin)).width(700).height(400);h.button("Close");h.show(stage);});})).height(34).pad(12);d.button("Close");d.show(stage);
+    }
     private void palette(){
         Dialog d=new Dialog("Command palette",skin);String[] names={"Open repository","Go to file","Branch A/B","Drone View","Explode","Reset camera","Focus hotspot","Export screenshot"};
         for(String name:names)d.getContentTable().add(button(name,()->{d.hide();switch(name){case "Open repository"->openDialog();case "Go to file"->stage.setKeyboardFocus(search);case "Branch A/B"->branches();case "Drone View"->city.tour=!city.tour;case "Explode"->city.exploded=!city.exploded;case "Reset camera"->city.reset();case "Focus hotspot"->hotspots.entrySet().stream().max(Comparator.comparingDouble(e->e.getValue().score())).ifPresent(e->{select(e.getKey());city.focus(e.getKey());});case "Export screenshot"->exportDialog();}})).width(320).height(36).pad(4).row();d.button("Close");d.show(stage);
@@ -250,7 +268,7 @@ public final class CodeverseApp extends ApplicationAdapter {
     }
     private void screenshot(){
         try{Path dir=(store==null?Path.of(System.getProperty("java.io.tmpdir"),"codeverse"):store.home()).resolve("exports");Files.createDirectories(dir);Path dest=dir.resolve("codeverse-"+System.currentTimeMillis()+".png");
-            int x=anonymous.isChecked()?264:0,y=anonymous.isChecked()?122:0,w=anonymous.isChecked()?Gdx.graphics.getWidth()-564:Gdx.graphics.getWidth(),h=anonymous.isChecked()?Gdx.graphics.getHeight()-202:Gdx.graphics.getHeight();
+            int x=anonymous.isChecked()?HdpiUtils.toBackBufferX(264):0,y=anonymous.isChecked()?HdpiUtils.toBackBufferY(122):0,w=anonymous.isChecked()?HdpiUtils.toBackBufferX(Gdx.graphics.getWidth()-564):Gdx.graphics.getBackBufferWidth(),h=anonymous.isChecked()?HdpiUtils.toBackBufferY(Gdx.graphics.getHeight()-202):Gdx.graphics.getBackBufferHeight();
             Pixmap pix=Pixmap.createFromFrameBuffer(x,y,w,h);PixmapIO.writePNG(Gdx.files.absolute(dest.toString()),pix,-1,true);pix.dispose();status.setText("Saved: "+dest);
         }catch(Exception e){status.setText("Export failed: "+e.getMessage());}
     }
@@ -261,17 +279,17 @@ public final class CodeverseApp extends ApplicationAdapter {
         if(playing&&!busy&&!history.isEmpty()){playClock+=dt;float delay=speed.getSelected().equals("x16")?.18f:speed.getSelected().equals("x4")?.5f:1.6f;if(playClock>delay){playClock=0;scrub(currentCommit>0?currentCommit-1:history.size()-1);}}
         ScreenUtils.clear(BG,true);city.render(dt,264,122,Math.max(1,Gdx.graphics.getWidth()-564),Math.max(1,Gdx.graphics.getHeight()-202));
         if(showEdges&&selected!=null)drawEdges();
-        stage.act(dt);stage.draw();
+        stage.getViewport().apply();stage.act(dt);stage.draw();
         diagnostics.setVisible(diagnostic);if(diagnostic){var samples=frameTimes.stream().sorted().toList();float p95=samples.get((int)(samples.size()*.95));diagnostics.setText(Gdx.graphics.getFramesPerSecond()+" FPS / p95 "+String.format(Locale.ROOT,"%.1f",p95)+" ms / heap "+(Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory())/1048576+" MB / "+city.buildings().size()+" nodes");}
     }
     private void drawEdges(){
-        Gdx.gl.glViewport(264,122,Math.max(1,Gdx.graphics.getWidth()-564),Math.max(1,Gdx.graphics.getHeight()-202));lines.setProjectionMatrix(city.camera.combined);lines.begin(ShapeRenderer.ShapeType.Line);lines.setColor(CYAN);
+        HdpiUtils.glViewport(264,122,Math.max(1,Gdx.graphics.getWidth()-564),Math.max(1,Gdx.graphics.getHeight()-202));lines.setProjectionMatrix(city.camera.combined);lines.begin(ShapeRenderer.ShapeType.Line);lines.setColor(CYAN);
         Map<String,CityRenderer.Building> map=new HashMap<>();for(var b:city.buildings())map.put(b.file.path(),b);int count=0;
         for(var e:edges){if(!e.source().equals(selected)&&!e.target().equals(selected))continue;var a=map.get(e.source());var b=map.get(e.target());if(a==null||b==null)continue;if(++count>200)break;
             Vector3 start=new Vector3(),end=new Vector3();a.bounds.getCenter(start);start.y=a.bounds.max.y;b.bounds.getCenter(end);end.y=b.bounds.max.y;
             Vector3 prev=start.cpy();for(int i=1;i<=20;i++){float t=i/20f;Vector3 next=new Vector3(start).lerp(end,t);next.y+=MathUtils.sin(t*MathUtils.PI)*40;lines.line(prev,next);prev=next;}}
-        lines.end();Gdx.gl.glViewport(0,0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
+        lines.end();HdpiUtils.glViewport(0,0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
     }
-    @Override public void resize(int w,int h){if(stage==null)return;stage.getViewport().update(w,h,true);top.setBounds(0,h-80,w,80);side.setBounds(0,122,264,h-202);inspect.setBounds(w-300,122,300,h-202);bottom.setBounds(0,0,w,122);header.setPosition(290,h-123);metrics.setPosition(290,h-149);diagnostics.setPosition(290,145);}
+    @Override public void resize(int w,int h){if(stage==null)return;stage.getViewport().update(w,h,true);top.setBounds(0,h-80,w,80);side.setBounds(0,122,264,h-202);inspectPanel.setBounds(w-300,122,300,h-202);bottom.setBounds(0,0,w,122);header.setPosition(290,h-123);metrics.setPosition(290,h-149);diagnostics.setPosition(290,145);}
     @Override public void dispose(){generation.incrementAndGet();worker.shutdownNow();stage.dispose();skin.dispose();city.close();lines.dispose();if(store!=null)try{store.close();}catch(Exception ignored){}}
 }

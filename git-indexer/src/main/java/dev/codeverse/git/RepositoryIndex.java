@@ -129,6 +129,12 @@ public final class RepositoryIndex implements AutoCloseable {
         for(var e:values.entrySet()){int[] v=e.getValue();int a=authors.get(e.getKey()).size();out.put(e.getKey(),new Hotspot(v[0],v[1],a,(v[0]*.55+v[1]*.30+a*.15)/Math.max(1,max)));}
         return Map.copyOf(out);
     }
+    public List<CommitInfo> fileHistory(String ref,String path) throws Exception {
+        var result=new ArrayList<CommitInfo>();
+        try(Git git=new Git(repo)) {for(RevCommit c:git.log().add(ObjectId.fromString(resolve(ref))).addPath(path).setMaxCount(MAX_COMMITS).call())
+            result.add(new CommitInfo(c.name(),Arrays.stream(c.getParents()).map(RevCommit::name).toList(),c.getCommitTime(),c.getAuthorIdent().getName(),c.getShortMessage()));}
+        return List.copyOf(result);
+    }
     private static void check(BooleanSupplier cancel) throws InterruptedIOException { if(cancel.getAsBoolean()||Thread.currentThread().isInterrupted())throw new InterruptedIOException("Cancelled"); }
     public void close(){repo.close();}
 }
