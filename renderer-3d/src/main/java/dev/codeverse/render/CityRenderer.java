@@ -121,7 +121,7 @@ public final class CityRenderer implements AutoCloseable {
       mesh.building(-1);
       float x = b.cell.x(), z = b.cell.z();
       int layer = b.cell.layer();
-      fixed(x, -2, z, 23, 2, 23, layer, ASPHALT);
+      fixed(x, -2.2f, z, 23, 2, 23, layer, ASPHALT);
       fixed(x, -.7f, z, 19.5f, .7f, 19.5f, layer, PAVEMENT);
       int seed = b.file.path().hashCode() & 0x7fffffff;
       float width = b.cell.width() * (.72f + (seed % 4) * .06f),
@@ -174,7 +174,7 @@ public final class CityRenderer implements AutoCloseable {
             ROOF,
             false);
       mesh.building(-1);
-      fixed(x + 11.1f, -.85f, z, .28f, .08f, 5, layer, MARKING);
+      fixed(x + 11.1f, -.17f, z, .28f, .08f, 5, layer, MARKING);
       if (seed % 5 == 0 && buildings.size() < 20000) {
         fixed(x - 8.1f, 0, z + 8.1f, .65f, 3, .65f, layer, TRUNK);
         fixed(x - 8.1f, 2.1f, z + 8.1f, 2.8f, 3.8f, 2.8f, layer, GREEN);
@@ -202,7 +202,7 @@ public final class CityRenderer implements AutoCloseable {
         for (int col = 0; col < 8; col++) {
           float px = x + col * 23, pz = z + row * 23;
           if (occupied.contains(Math.round(px) + ":" + Math.round(pz) + ":" + layer)) continue;
-          fixed(px, -2, pz, 23, 2, 23, layer, ASPHALT);
+          fixed(px, -2.2f, pz, 23, 2, 23, layer, ASPHALT);
           fixed(px, -.7f, pz, 19.5f, .7f, 19.5f, layer, PAVEMENT);
           fixed(px, -.05f, pz, 16, .25f, 16, layer, GREEN);
           fixed(px, .2f, pz, 2, .1f, 16, layer, PAVEMENT);
@@ -211,8 +211,8 @@ public final class CityRenderer implements AutoCloseable {
           fixed(px + 4, .2f, pz - 4, 1, 3, 1, layer, TRUNK);
           fixed(px + 4, 2.4f, pz - 4, 4, 5, 4, layer, GREEN);
         }
-      fixed(x + 80.5f, -2.1f, z - 29.5f, 220, 2, 36, layer, ASPHALT);
-      fixed(x - 29.5f, -2.1f, z + 80.5f, 36, 2, 220, layer, ASPHALT);
+      fixed(x + 80.5f, -2.3f, z - 29.5f, 220, 2, 36, layer, ASPHALT);
+      fixed(x - 29.5f, -2.3f, z + 80.5f, 36, 2, 220, layer, ASPHALT);
       fixed(x + 80.5f, -.7f, z - 12, 184, .6f, 2.5f, layer, PAVEMENT);
       fixed(x - 12, -.7f, z + 80.5f, 2.5f, .6f, 184, layer, PAVEMENT);
       for (int i = 0; i < 9; i++) {
