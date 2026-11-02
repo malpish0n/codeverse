@@ -1,0 +1,23 @@
+{
+  "machine": "Apple M1 Pro, macOS, JDK 25",
+  "renderer": {
+    "inputFiles": 10000,
+    "renderNodes": 10000,
+    "warmupFrames": 180,
+    "measuredFrames": 179,
+    "frameMsP50": 2.274583,
+    "frameMsP95": 9.727166,
+    "heapUsedBytes": 90936896,
+    "gpu": "Apple M1 Pro"
+  },
+  "indexer": {
+    "files": 10000,
+    "fixtureCommits": 10000,
+    "indexedCommits": 2000,
+    "snapshotMs": 537.675792,
+    "historyMs": 719.68575,
+    "layoutMs": 26.960375,
+    "renderNodes": 10000,
+    "note": "History fixture uses unchanged trees; not a worst-case churn benchmark"
+  }
+}

@@ -15,7 +15,9 @@ root = pathlib.Path(__file__).resolve().parent.parent
 source = root / 'desktop-ui/build/install/desktop-ui/lib'
 dest = pathlib.Path(args.dest).resolve()
 dest.mkdir(parents=True, exist_ok=True)
-command = ['jpackage', '--type', args.type, '--name', 'CODEVERSE', '--input', str(source),
+java_home = os.environ.get('JAVA_HOME')
+packager = str(pathlib.Path(java_home) / 'bin' / ('jpackage.exe' if platform.system() == 'Windows' else 'jpackage')) if java_home else 'jpackage'
+command = [packager, '--type', args.type, '--name', 'CODEVERSE', '--input', str(source),
            '--main-jar', 'desktop-ui-0.1.0.jar', '--main-class', 'dev.codeverse.desktop.Launcher',
            '--dest', str(dest), '--app-version', '1.0.0', '--vendor', 'CODEVERSE',
            '--description', 'Offline Git history explorer / preview 0.1.0',
