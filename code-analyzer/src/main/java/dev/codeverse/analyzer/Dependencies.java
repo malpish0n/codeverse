@@ -18,8 +18,16 @@ public final class Dependencies {
         for(var f:snapshot.files())if(f.language().equals("Java")){
             Matcher m=IMPORT.matcher(f.source());while(m.find()){
                 String imp=m.group(1);
-                for(var e:names.entrySet())if(!e.getValue().equals(f.path()) && (imp.equals(e.getKey()) || imp.startsWith(e.getKey()+".") || (imp.endsWith(".*")&&e.getKey().startsWith(imp.substring(0,imp.length()-1)))))
-                    edges.add(new Edge(f.path(),e.getValue(),"Java import heuristic",.8));
+                if(imp.endsWith(".*")){
+                    String prefix=imp.substring(0,imp.length()-1);
+                    for(var e:names.entrySet())if(e.getKey().startsWith(prefix)&&!e.getKey().substring(prefix.length()).contains(".")&&!e.getValue().equals(f.path()))edges.add(new Edge(f.path(),e.getValue(),"Java wildcard import heuristic",.6));
+                }else{
+                    String candidate=imp;
+                    while(candidate.contains(".")){
+                        String target=names.get(candidate);if(target!=null){if(!target.equals(f.path()))edges.add(new Edge(f.path(),target,"Java import heuristic",.8));break;}
+                        candidate=candidate.substring(0,candidate.lastIndexOf('.'));
+                    }
+                }
             }
         }
         return List.copyOf(edges);
@@ -30,6 +38,20 @@ public final class Dependencies {
         seen.remove(start);return seen;
     }
     public static Set<String> cycles(List<Edge> edges){
-        Set<String> cycle=new HashSet<>();for(Edge e:edges)if(reach(edges,e.target(),edges.size()+1,false).contains(e.source())||e.source().equals(e.target())){cycle.add(e.source());cycle.add(e.target());}return cycle;
+        Map<String,List<String>> forward=new HashMap<>(),reverse=new HashMap<>();Set<String> nodes=new HashSet<>();
+        for(var e:edges){nodes.add(e.source());nodes.add(e.target());forward.computeIfAbsent(e.source(),k->new ArrayList<>()).add(e.target());reverse.computeIfAbsent(e.target(),k->new ArrayList<>()).add(e.source());}
+        Set<String> seen=new HashSet<>();List<String> order=new ArrayList<>();
+        record Visit(String node,boolean finish){}
+        for(String root:nodes)if(!seen.contains(root)){
+            ArrayDeque<Visit> stack=new ArrayDeque<>();stack.push(new Visit(root,false));
+            while(!stack.isEmpty()){Visit v=stack.pop();if(v.finish()){order.add(v.node());continue;}if(!seen.add(v.node()))continue;stack.push(new Visit(v.node(),true));for(String next:forward.getOrDefault(v.node(),List.of()))if(!seen.contains(next))stack.push(new Visit(next,false));}
+        }
+        Collections.reverse(order);seen.clear();Set<String> result=new HashSet<>();
+        for(String root:order)if(seen.add(root)){
+            Set<String> component=new HashSet<>();ArrayDeque<String> stack=new ArrayDeque<>();stack.push(root);
+            while(!stack.isEmpty()){String n=stack.pop();component.add(n);for(String next:reverse.getOrDefault(n,List.of()))if(seen.add(next))stack.push(next);}
+            if(component.size()>1||forward.getOrDefault(root,List.of()).contains(root))result.addAll(component);
+        }
+        return result;
     }
 }

@@ -35,7 +35,7 @@ public final class CityRenderer implements AutoCloseable {
     private final Color cyan=Color.valueOf("4DE2E9"), violet=Color.valueOf("9B85FF");
     public static final class Building {
         public FileRevision file; public Cell cell; public ModelInstance body,roof;
-        public float height, goal; public String change=""; public double hotspot;
+        public float height, goal;public boolean retiring; public String change=""; public double hotspot;
         public BoundingBox bounds=new BoundingBox();
         Building(FileRevision f,Cell c,Model cube){file=f;cell=c;body=new ModelInstance(cube);roof=new ModelInstance(cube);height=0;goal=Data.height(f.loc());}
     }
@@ -51,9 +51,9 @@ public final class CityRenderer implements AutoCloseable {
         for(var d:changes)diff.put(d.type().equals("DELETE")?d.oldPath():d.newPath(),d.type());
         for(var f:snap.files()){
             live.add(f.path());var b=buildings.computeIfAbsent(f.path(),p->new Building(f,cells.get(p),cube));
-            b.file=f;b.cell=cells.get(f.path());b.goal=Data.height(f.loc());b.change=diff.getOrDefault(f.path(),"");b.hotspot=hotspots.getOrDefault(f.path(),new Hotspot(0,0,0,0)).score();
+            b.retiring=false;b.file=f;b.cell=cells.get(f.path());b.goal=Data.height(f.loc());b.change=diff.getOrDefault(f.path(),"");b.hotspot=hotspots.getOrDefault(f.path(),new Hotspot(0,0,0,0)).score();
         }
-        buildings.entrySet().removeIf(e->!live.contains(e.getKey()));
+        for(var e:buildings.entrySet())if(!live.contains(e.getKey())){e.getValue().goal=0;e.getValue().retiring=true;e.getValue().change="DELETE";}
         rebuildGround(); if(reset)reset();
     }
     private void rebuildGround(){
@@ -68,7 +68,7 @@ public final class CityRenderer implements AutoCloseable {
         BoundingBox box=new BoundingBox(); for(var b:buildings.values())box.ext(b.cell.x(),0,b.cell.z());box.getCenter(center);
         Vector3 dim=new Vector3();box.getDimensions(dim);sceneRadius=Math.max(160,Math.max(dim.x,dim.z)*.65f);
     }
-    public void reset(){target.set(center);distance=sceneRadius*2.4f+200;yaw=42;pitch=44;}
+    public void reset(){float lift=exploded?buildings.values().stream().map(b->b.cell.layer()).max(Integer::compare).orElse(0)*spacing:0;target.set(center).add(0,lift/2,0);distance=sceneRadius*2.4f+200+lift*.8f;yaw=42;pitch=44;}
     public void focus(String path){invalidate();var b=buildings.get(path);if(b!=null){target.set(b.cell.x(),b.goal/2+b.cell.layer()*spacing*explode,b.cell.z());distance=230;selected=path;}}
     public void select(String path){if(!Objects.equals(selected,path))invalidate();selected=path;}
     public void highlight(Set<String> paths){highlight=paths;invalidate();}
@@ -85,7 +85,7 @@ public final class CityRenderer implements AutoCloseable {
     }
     public void invalidate(){cacheReady=false;quiet=0;}
     public void render(float dt,int left,int bottom,int width,int height){
-        if(previousExploded!=exploded||previousHeat!=heat||previousSpacing!=spacing){invalidate();previousExploded=exploded;previousHeat=heat;previousSpacing=spacing;}
+        if(previousExploded!=exploded||previousHeat!=heat||previousSpacing!=spacing){if(previousExploded!=exploded||previousSpacing!=spacing)reset();invalidate();previousExploded=exploded;previousHeat=heat;previousSpacing=spacing;}
         quiet+=dt;
         time+=dt;explode=MathUtils.lerp(explode,exploded?1:0,reducedMotion?1:Math.min(1,dt*7));
         if(tour&&!reducedMotion){
@@ -108,7 +108,7 @@ public final class CityRenderer implements AutoCloseable {
         HdpiUtils.glViewport(left,bottom,width,height);Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
         if(cacheReady){batch.begin(camera);batch.render(staticCache,light);batch.end();HdpiUtils.glViewport(0,0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());return;}
         boolean buildCache=quiet>1.1f;
-        if(buildCache)staticCache.begin();
+        if(buildCache){buildings.entrySet().removeIf(e->e.getValue().retiring);staticCache.begin();}
         batch.begin(camera);for(var g:ground){if(buildCache)staticCache.add(g);batch.render(g,light);}
         for(var b:buildings.values()){
             b.height=MathUtils.lerp(b.height,b.goal,reducedMotion?1:Math.min(1,dt*8));float y=b.cell.layer()*spacing*explode;

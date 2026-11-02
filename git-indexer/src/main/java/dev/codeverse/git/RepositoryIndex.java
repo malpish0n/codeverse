@@ -54,7 +54,7 @@ public final class RepositoryIndex implements AutoCloseable {
         return List.copyOf(result);
     }
     public Snapshot snapshot(String ref, BooleanSupplier cancel, Consumer<String> progress) throws IOException {
-        String sha=resolve(ref); var files=new ArrayList<FileRevision>();
+        String sha=resolve(ref); var files=new ArrayList<FileRevision>();long retainedSource=0;
         try(var walk=new RevWalk(repo); var tree=new TreeWalk(repo)) {
             tree.addTree(walk.parseCommit(ObjectId.fromString(sha)).getTree()); tree.setRecursive(true);
             while(tree.next()) {
@@ -75,6 +75,7 @@ public final class RepositoryIndex implements AutoCloseable {
                             for(int i=0;i<bytes.length;i++) if(bytes[i]=='\n')loc++;
                             if(bytes.length>0&&bytes[bytes.length-1]=='\n')loc--;
                             if(source.startsWith("version https://git-lfs.github.com/spec/v1"))kind="LFS pointer";
+                            if(retainedSource+size>64L*1024*1024){source="";kind="text (source budget reached)";}else retainedSource+=size;
                         }
                     }
                 }
@@ -83,6 +84,13 @@ public final class RepositoryIndex implements AutoCloseable {
             }
         }
         return new Snapshot(sha,List.copyOf(files));
+    }
+    public String mergeBase(String a,String b)throws IOException{
+        try(var walk=new RevWalk(repo)){
+            walk.setRevFilter(org.eclipse.jgit.revwalk.filter.RevFilter.MERGE_BASE);
+            walk.markStart(walk.parseCommit(ObjectId.fromString(resolve(a))));walk.markStart(walk.parseCommit(ObjectId.fromString(resolve(b))));
+            RevCommit base=walk.next();if(base==null)throw new IOException("No common ancestor for A and B.");return base.name();
+        }
     }
     public List<Change> diff(String a, String b, boolean mergeBase) throws IOException {
         try(var walk=new RevWalk(repo)) {

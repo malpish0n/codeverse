@@ -4,3 +4,5 @@
 *.iml
 .DS_Store
 local-data/
+dist/
+installers/

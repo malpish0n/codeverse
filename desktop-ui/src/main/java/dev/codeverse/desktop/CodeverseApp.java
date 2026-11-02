@@ -30,7 +30,9 @@ import java.util.function.*;
 
 public final class CodeverseApp extends ApplicationAdapter {
     private static final Color BG=Color.valueOf("090E19"), PANEL=Color.valueOf("111B2D"), CYAN=Color.valueOf("4DE2E9"), TEXT=Color.valueOf("E4EDF6"), MUTED=Color.valueOf("8B9EB4");
-    private Stage stage; private Skin skin; private CityRenderer city; private ShapeRenderer lines;
+    private Stage stage; private Skin skin; private CityRenderer city,comparisonCity;
+    private boolean splitView=false;
+    private Snapshot comparisonA; private ShapeRenderer lines;
     private final StableLayout layout=new StableLayout();
     private final ExecutorService worker=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"codeverse-indexer");t.setDaemon(true);return t;});
     private final AtomicInteger generation=new AtomicInteger(); private Future<?> job;
@@ -44,6 +46,7 @@ public final class CodeverseApp extends ApplicationAdapter {
     private TextField search; private SelectBox<String> branchA,branchB,window,depth,direction,speed;
     private Slider timeline,spacing; private CheckBox mergeBase,reduced,anonymous;
     private String selected,activeView="Overview"; private boolean busy=false,playing=false,diagnostic=false,suppress=false,follow=false,showEdges=false,dag=false;
+    private int hotspotDays=90;
     private float playClock=0; private int currentCommit=0; private final String initial;
     private ArrayDeque<Float> frameTimes=new ArrayDeque<>(); private long indexStarted;
     private String[] refs={"HEAD"};
@@ -60,7 +63,7 @@ public final class CodeverseApp extends ApplicationAdapter {
     public void dropped(String[] files){if(files.length>0)open(Path.of(files[0]));}
     public CodeverseApp(String initial){this.initial=initial;}
     @Override public void create(){
-        stage=new Stage(new ScreenViewport());skin=createSkin();city=new CityRenderer();lines=new ShapeRenderer();
+        stage=new Stage(new ScreenViewport());skin=createSkin();city=new CityRenderer();comparisonCity=new CityRenderer();lines=new ShapeRenderer();
         try{store=new Store(appData());preferences=store.load("settings",Preferences.class,new Preferences());}
         catch(Exception e){System.err.println("Cache unavailable: "+e.getMessage());}
         city.reducedMotion=preferences.reducedMotion;buildUI();
@@ -68,7 +71,7 @@ public final class CodeverseApp extends ApplicationAdapter {
             int lx,ly; boolean dragging;
             public boolean touchDown(int x,int y,int pointer,int button){lx=x;ly=y;dragging=false;return x>264&&x<Gdx.graphics.getWidth()-300&&y>80&&y<Gdx.graphics.getHeight()-122;}
             public boolean touchDragged(int x,int y,int pointer){if(x>264&&x<Gdx.graphics.getWidth()-300){city.orbit(x-lx,y-ly);dragging=true;lx=x;ly=y;}return true;}
-            public boolean touchUp(int x,int y,int pointer,int button){if(!dragging&&x>264&&x<Gdx.graphics.getWidth()-300&&y>80&&y<Gdx.graphics.getHeight()-122)select(city.pick(x,y,264,122,Gdx.graphics.getWidth()-564,Gdx.graphics.getHeight()-202));return true;}
+            public boolean touchUp(int x,int y,int pointer,int button){if(!dragging&&x>264&&x<Gdx.graphics.getWidth()-300&&y>80&&y<Gdx.graphics.getHeight()-122)select(pick(x,y));return true;}
             public boolean scrolled(float x,float y){city.zoom(y);return true;}
             public boolean keyDown(int key){
                 if(key==Input.Keys.ESCAPE){stage.setKeyboardFocus(null);return true;}
@@ -90,7 +93,7 @@ public final class CodeverseApp extends ApplicationAdapter {
     private Skin createSkin(){
         Skin s=new Skin();Pixmap p=new Pixmap(1,1,Pixmap.Format.RGBA8888);p.setColor(Color.WHITE);p.fill();Texture t=new Texture(p);p.dispose();s.add("white",t);
         BitmapFont font=new BitmapFont();
-        try{var generator=new FreeTypeFontGenerator(Gdx.files.internal("fonts/Inter.ttf"));var param=new FreeTypeFontGenerator.FreeTypeFontParameter();param.size=15;param.characters=FreeTypeFontGenerator.DEFAULT_CHARS+"ąćęłńóśźżĄĆĘŁŃÓŚŹŻ→●—·";font.dispose();font=generator.generateFont(param);generator.dispose();}catch(Exception ignored){}
+        try{var generator=new FreeTypeFontGenerator(Gdx.files.internal("fonts/Inter.ttf"));var param=new FreeTypeFontGenerator.FreeTypeFontParameter();param.size=30;param.characters=FreeTypeFontGenerator.DEFAULT_CHARS+"ąćęłńóśźżĄĆĘŁŃÓŚŹŻ→●—·";font.dispose();font=generator.generateFont(param);font.getData().setScale(.5f);font.getRegion().getTexture().setFilter(Texture.TextureFilter.Linear,Texture.TextureFilter.Linear);generator.dispose();}catch(Exception ignored){}
         s.add("default-font",font);s.add("default",new Label.LabelStyle(font,TEXT));
         var button=new TextButton.TextButtonStyle();button.font=font;button.fontColor=TEXT;button.up=s.newDrawable("white",Color.valueOf("1B2B40"));button.over=s.newDrawable("white",Color.valueOf("29445B"));button.down=s.newDrawable("white",Color.valueOf("315B6B"));button.checked=s.newDrawable("white",Color.valueOf("254755"));button.disabledFontColor=MUTED;s.add("default",button);
         var tf=new TextField.TextFieldStyle();tf.font=font;tf.fontColor=TEXT;tf.background=s.newDrawable("white",Color.valueOf("0B1423"));tf.cursor=s.newDrawable("white",CYAN);tf.selection=s.newDrawable("white",Color.valueOf("355569"));tf.messageFontColor=MUTED;s.add("default",tf);
@@ -142,6 +145,12 @@ public final class CodeverseApp extends ApplicationAdapter {
         status=label("Ready",MUTED);bottom.add(status).growX().left().padTop(6);bottom.add(button("Cancel",this::cancel)).width(65).height(24);
         resize(Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
     }
+    private String pick(int x,int y){
+        int width=Gdx.graphics.getWidth()-564,height=Gdx.graphics.getHeight()-202;
+        if(!splitView)return city.pick(x,y,264,122,width,height);
+        if(x<264+width/2)return comparisonCity.pick(x,y,264,122,width/2,height);
+        return city.pick(x,y,264+width/2,122,width-width/2,height);
+    }
     private void openDialog(){
         Dialog d=new Dialog("Open a local Git repository",skin);TextField path=new TextField(repoPath==null?"":repoPath.toString(),skin);path.setMessageText("/path/to/repository");
         d.getContentTable().add(label("Repository root or bare repository. Read-only indexing.",MUTED)).pad(12).row();d.getContentTable().add(path).width(640).height(38).pad(12).row();
@@ -153,14 +162,14 @@ public final class CodeverseApp extends ApplicationAdapter {
         runTask("Preparing demo repository",()->{Path home=store==null?Path.of(System.getProperty("java.io.tmpdir"),"codeverse"):store.home();return DemoRepository.create(home.resolve("demo-repository"));},this::open);
     }
     private void open(Path path){
-        playing=false;repoPath=path;selected=null;layout.clear();
+        playing=false;splitView=false;repoPath=path;selected=null;layout.clear();
         runTask("Indexing "+path.getFileName(),()->{
             try(var index=new RepositoryIndex(path)){
                 int token=generation.get();var h=index.history("HEAD",true,()->generation.get()!=token);
                 Snapshot s=cached(index,"HEAD",token);var hot=index.hotspots("HEAD",90,()->generation.get()!=token);
                 return new Loaded(s,h,index.refs(),hot);
             }
-        },data->{snapshot=data.snapshot;history=data.history;refs=data.refs.toArray(String[]::new);hotspots=data.hotspots;changes=java.util.List.of();currentCommit=0;
+        },data->{snapshot=data.snapshot;history=data.history;refs=data.refs.toArray(String[]::new);hotspots=data.hotspots;hotspotDays=90;changes=java.util.List.of();currentCommit=0;
             repoLabel.setText(path.getFileName()+"  /  LOCAL");preferences.lastRepo=path.toString();if(preferences.recent==null)preferences.recent=new ArrayList<>();preferences.recent.remove(path.toString());preferences.recent.addFirst(path.toString());if(preferences.recent.size()>8)preferences.recent.removeLast();savePrefs();display(true);});
     }
     private record Loaded(Snapshot snapshot,java.util.List<CommitInfo> history,java.util.List<String> refs,Map<String,Hotspot> hotspots){}
@@ -177,9 +186,9 @@ public final class CodeverseApp extends ApplicationAdapter {
     private void cancel(){generation.incrementAndGet();if(job!=null)job.cancel(true);busy=false;playing=false;status.setText("Indexing cancelled");}
     private void postStatus(String text){Gdx.app.postRunnable(()->{if(busy)status.setText(text);});}
     private void display(boolean reset){
-        edges=Dependencies.analyze(snapshot);layout.reserve(snapshot.files().stream().map(FileRevision::path).toList());city.setScene(snapshot,layout.cells(),changes,hotspots,reset);
+        edges=Dependencies.analyze(snapshot);Snapshot visual=Aggregation.forRendering(snapshot);layout.reserve(visual.files().stream().map(FileRevision::path).toList());city.setScene(visual,layout.cells(),changes,hotspots,reset);
         if(follow&&selected!=null)city.focus(selected);
-        metrics.setText(snapshot.files().size()+" FILES   /   "+snapshot.files().stream().map(FileRevision::module).distinct().count()+" MODULES   /   "+edges.size()+" IMPORT EDGES");
+        metrics.setText(snapshot.files().size()+" FILES   /   "+snapshot.files().stream().map(FileRevision::module).distinct().count()+" MODULES   /   "+edges.size()+" IMPORT EDGES"+(visual!=snapshot?" / AGGREGATED":""));
         suppress=true;timeline.setRange(0,Math.max(1,history.size()-1));timeline.setValue(currentCommit);suppress=false;
         CommitInfo c=history.stream().filter(x->x.sha().equals(snapshot.sha())).findFirst().orElse(null);
         commitLabel.setText(snapshot.sha().substring(0,8)+"  "+(c==null?"Branch comparison":c.message()+"  /  "+c.author())+"  /  "+(dag?"DAG":"first-parent")+(c!=null&&c.parents().size()>1?"  MERGE":""));
@@ -196,13 +205,13 @@ public final class CodeverseApp extends ApplicationAdapter {
     }
     private static boolean fuzzy(String q,String s){int j=0;for(int i=0;i<s.length()&&j<q.length();i++)if(s.charAt(i)==q.charAt(j))j++;return j==q.length();}
     private void select(String path){
-        selected=path;city.select(path);var b=city.selected();if(b==null){inspector.setText("Select a building\nto inspect its source metrics.\n\nDrag: orbit  /  scroll: zoom\nWASD: fly  /  Shift: boost\nF: focus  /  R: reset\nE: explode  /  T: drone");city.highlight(Set.of());return;}
+        selected=path;city.select(path);comparisonCity.select(path);var b=city.selected();if(b==null){inspector.setText("Select a building\nto inspect its source metrics.\n\nDrag: orbit  /  scroll: zoom\nWASD: fly  /  Shift: boost\nF: focus  /  R: reset\nE: explode  /  T: drone");city.highlight(Set.of());return;}
         var f=b.file;var h=hotspots.getOrDefault(path,new Hotspot(0,0,0,0));
-        inspector.setText(f.path()+"\n\n"+f.language()+" / "+f.kind()+"\n"+f.loc()+" lines  /  "+f.bytes()+" bytes\n\nHEIGHT\nclamp(8 + 16 × log2(1+LOC),\n8, 120) = "+Math.round(Data.height(f.loc()))+"\n\nCHANGE FREQUENCY\n"+h.commits()+" commits / "+h.authors()+" authors\n"+h.linesChanged()+" lines changed\nWindow: "+(window==null?"90":window.getSelected())+" days\nScore: "+String.format(Locale.ROOT,"%.3f",h.score())+" (normalized)\n"+(b.change.isEmpty()?"":"\nDIFF: "+b.change));
+        inspector.setText(f.path()+"\n\n"+f.language()+" / "+f.kind()+"\n"+f.loc()+" lines  /  "+f.bytes()+" bytes\n\nHEIGHT\nclamp(8 + 16 × log2(1+LOC),\n8, 120) = "+Math.round(Data.height(f.loc()))+"\n\nCHANGE FREQUENCY\n"+h.commits()+" commits / "+h.authors()+" authors\n"+h.linesChanged()+" lines changed\nWindow: "+hotspotDays+" days\nHistory cap: 2,000 commits\nScore: "+String.format(Locale.ROOT,"%.3f",h.score())+" (normalized)\n"+(b.change.isEmpty()?"":"\nDIFF: "+b.change));
         if(showEdges)city.highlight(Dependencies.reach(edges,path,depth==null?1:Integer.parseInt(depth.getSelected()),direction!=null&&direction.getSelected().equals("Imported by")));
     }
     private void scrub(int index){
-        if(history.isEmpty()||repoPath==null||index<0||index>=history.size())return;currentCommit=index;String ref=history.get(index).sha();Path path=repoPath;String before=snapshot==null?ref:snapshot.sha();
+        if(history.isEmpty()||repoPath==null||index<0||index>=history.size())return;splitView=false;currentCommit=index;String ref=history.get(index).sha();Path path=repoPath;String before=snapshot==null?ref:snapshot.sha();
         runTask("Loading commit "+ref.substring(0,8),()->{try(var repo=new RepositoryIndex(path)){int token=generation.get();return new Compared(cached(repo,ref,token),repo.diff(before,ref,false));}},v->{snapshot=v.snapshot;changes=v.changes;display(false);});
     }
     private record Compared(Snapshot snapshot,java.util.List<Change> changes){}
@@ -215,16 +224,24 @@ public final class CodeverseApp extends ApplicationAdapter {
         mergeBase=new CheckBox("  Compare merge-base(A,B) → B (A...B)",skin);
         Table c=d.getContentTable();c.add(label("A",MUTED)).pad(12);c.add(branchA).width(250).height(34);c.add(label("B",MUTED)).pad(12);c.add(branchB).width(250).height(34).row();c.add(mergeBase).colspan(4).left().pad(14).row();
         c.add(label("Default: tip-to-tip A → B (git diff A B). Stable overlay positions.\nCyan: added / violet: modified or renamed / red: deleted.",MUTED)).colspan(4).pad(14).row();
-        c.add(button("Compare overlay",()->{String a=branchA.getSelected(),b=branchB.getSelected();boolean base=mergeBase.isChecked();d.hide();compare(a,b,base);})).colspan(4).height(36).pad(14);d.button("Close");d.show(stage);
+        c.add(button("Compare overlay",()->{String a=branchA.getSelected(),b=branchB.getSelected();boolean base=mergeBase.isChecked();splitView=false;d.hide();compare(a,b,base);})).colspan(2).height(36).pad(14);
+        c.add(button("Split A / B",()->{String a=branchA.getSelected(),b=branchB.getSelected();boolean base=mergeBase.isChecked();splitView=true;d.hide();compare(a,b,base);})).colspan(2).height(36).pad(14);d.button("Close");d.show(stage);
     }
+    private record BranchComparison(Snapshot a,Snapshot b,java.util.List<Change> changes,java.util.List<CommitInfo> history){}
     private void compare(String a,String b,boolean base){
         if(repoPath==null)return;Path path=repoPath;
         runTask("Comparing "+a+" → "+b,()->{try(var repo=new RepositoryIndex(path)){
-            int token=generation.get();Snapshot sa=cached(repo,a,token),sb=cached(repo,b,token);var diff=repo.diff(a,b,base);
-            Map<String,FileRevision> union=new TreeMap<>();for(var f:sb.files())union.put(f.path(),f);
-            Set<String> deleted=new HashSet<>();for(var x:diff)if(x.type().equals("DELETE"))deleted.add(x.oldPath());for(var f:sa.files())if(deleted.contains(f.path()))union.putIfAbsent(f.path(),f);
-            return new Compared(new Snapshot(sb.sha(),java.util.List.copyOf(union.values())),diff);
-        }},v->{snapshot=v.snapshot;changes=v.changes;display(false);header.setText("BRANCH OVERLAY");metrics.setText(a+" → "+b+" / "+changes.size()+" CHANGES / "+(base?"MERGE-BASE":"TIP-TO-TIP"));});
+            int token=generation.get();Snapshot sa=cached(repo,base?repo.mergeBase(a,b):a,token),sb=cached(repo,b,token);
+            return new BranchComparison(sa,sb,repo.diff(a,b,base),repo.history(b,true,()->generation.get()!=token));
+        }},v->{
+            comparisonA=v.a;changes=v.changes;history=v.history;currentCommit=0;dag=false;
+            Map<String,FileRevision> union=new TreeMap<>();for(var f:v.b.files())union.put(f.path(),f);
+            Set<String> deleted=new HashSet<>();for(var x:changes)if(x.type().equals("DELETE"))deleted.add(x.oldPath());for(var f:v.a.files())if(deleted.contains(f.path()))union.putIfAbsent(f.path(),f);
+            layout.reserve(v.a.files().stream().map(FileRevision::path).toList());layout.reserve(v.b.files().stream().map(FileRevision::path).toList());
+            snapshot=new Snapshot(v.b.sha(),java.util.List.copyOf(union.values()));display(false);
+            if(splitView){comparisonCity.setScene(v.a,layout.cells(),java.util.List.of(),Map.of(),true);city.setScene(v.b,layout.cells(),changes,hotspots,true);}
+            header.setText(splitView?"BRANCH UNIVERSE / A | B":"BRANCH OVERLAY");metrics.setText(a+" → "+b+" / "+changes.size()+" CHANGES / "+(base?"MERGE-BASE":"TIP-TO-TIP"));
+        });
     }
     private void historyDialog(){
         Dialog d=new Dialog("Commit history / bounded to 2,000 commits",skin);Table rows=new Table();rows.top().left();
@@ -236,12 +253,13 @@ public final class CodeverseApp extends ApplicationAdapter {
         Dialog d=new Dialog("Dependency X-Ray",skin);depth=new SelectBox<>(skin);depth.setItems("1","2","3");direction=new SelectBox<>(skin);direction.setItems("Imports","Imported by");
         var c=d.getContentTable();c.add(label("Depth",MUTED)).pad(12);c.add(depth).width(60).height(32);c.add(direction).width(170).height(32).pad(12).row();
         c.add(label("Java imports only / heuristic confidence 0.8.\nReflection, runtime calls and other languages are unknown.\nSelect a building to highlight reachable files.",MUTED)).colspan(3).pad(15).row();
-        c.add(button("Apply",()->{select(selected);d.hide();})).height(34).pad(12);c.add(button("Find cycle members",()->{Set<String> cycle=Dependencies.cycles(edges);city.highlight(cycle);status.setText(cycle.size()+" files in import cycles (heuristic)");d.hide();})).colspan(2).height(34).pad(12);d.button("Close");d.show(stage);
+        c.add(button("Impact preview",()->{Set<String> impact=new HashSet<>();for(var change:changes){String file=change.type().equals("DELETE")?change.oldPath():change.newPath();impact.addAll(Dependencies.reach(edges,file,3,true));}city.highlight(impact);inspector.setText("Potential impact (heuristic)\n"+impact.size()+" dependent files\nDepth: 3 / imported by\n\nThis is not a prediction of errors.");d.hide();})).colspan(3).height(34).pad(12).row();
+        c.add(button("Apply",()->{select(selected);d.hide();})).height(34).pad(12);c.add(button("Find cycle members",()->{var currentEdges=edges;d.hide();runTask("Finding import cycles",()->Dependencies.cycles(currentEdges),cycle->{city.highlight(cycle);inspector.setText(cycle.size()+" files in import cycles\n\n"+String.join("\n",cycle.stream().sorted().limit(12).toList()));});})).colspan(2).height(34).pad(12);d.button("Close");d.show(stage);
     }
     private void hotspotDialog(){
         Dialog d=new Dialog("Change frequency / not a quality verdict",skin);window=new SelectBox<>(skin);window.setItems("90","30","365");d.getContentTable().add(label("Window (days)",MUTED)).pad(12);d.getContentTable().add(window).width(100).height(32).row();
         d.getContentTable().add(label("normalized(commits × .55 + lines changed × .30 + authors × .15)\nFirst-parent history, maximum 2,000 commits.",MUTED)).colspan(2).pad(12).row();
-        d.getContentTable().add(button("Recalculate",()->{int days=Integer.parseInt(window.getSelected());d.hide();if(repoPath==null)return;Path p=repoPath;runTask("Calculating hotspots",()->{try(var r=new RepositoryIndex(p)){int token=generation.get();return r.hotspots("HEAD",days,()->generation.get()!=token);}},h->{hotspots=h;display(false);});})).colspan(2).height(34).pad(12);d.button("Close");d.show(stage);
+        d.getContentTable().add(button("Recalculate",()->{int days=Integer.parseInt(window.getSelected());d.hide();if(repoPath==null)return;Path p=repoPath;runTask("Calculating hotspots",()->{try(var r=new RepositoryIndex(p)){int token=generation.get();return r.hotspots("HEAD",days,()->generation.get()!=token);}},h->{hotspots=h;hotspotDays=days;display(false);});})).colspan(2).height(34).pad(12);d.button("Close");d.show(stage);
     }
     private void bookmarks(){
         Dialog d=new Dialog("Saved viewpoint",skin);d.getContentTable().add(button("Save current view",()->{
@@ -277,10 +295,22 @@ public final class CodeverseApp extends ApplicationAdapter {
         float dt=Math.min(.05f,Gdx.graphics.getDeltaTime());frameTimes.add(Gdx.graphics.getDeltaTime()*1000);if(frameTimes.size()>300)frameTimes.remove();
         if(stage.getKeyboardFocus()==null){float f=(Gdx.input.isKeyPressed(Input.Keys.W)?1:0)-(Gdx.input.isKeyPressed(Input.Keys.S)?1:0),r=(Gdx.input.isKeyPressed(Input.Keys.D)?1:0)-(Gdx.input.isKeyPressed(Input.Keys.A)?1:0);city.move(f,r,dt,Gdx.input.isKeyPressed(Input.Keys.SHIFT_LEFT));}
         if(playing&&!busy&&!history.isEmpty()){playClock+=dt;float delay=speed.getSelected().equals("x16")?.18f:speed.getSelected().equals("x4")?.5f:1.6f;if(playClock>delay){playClock=0;scrub(currentCommit>0?currentCommit-1:history.size()-1);}}
-        ScreenUtils.clear(BG,true);city.render(dt,264,122,Math.max(1,Gdx.graphics.getWidth()-564),Math.max(1,Gdx.graphics.getHeight()-202));
-        if(showEdges&&selected!=null)drawEdges();
-        stage.getViewport().apply();stage.act(dt);stage.draw();
+        ScreenUtils.clear(BG,true);
+        int sceneWidth=Math.max(1,Gdx.graphics.getWidth()-564),sceneHeight=Math.max(1,Gdx.graphics.getHeight()-202);
+        if(splitView){
+            comparisonCity.yaw=city.yaw;comparisonCity.pitch=city.pitch;comparisonCity.distance=city.distance;comparisonCity.target().set(city.target());comparisonCity.exploded=city.exploded;comparisonCity.spacing=city.spacing;comparisonCity.reducedMotion=city.reducedMotion;
+            comparisonCity.render(dt,264,122,sceneWidth/2,sceneHeight);
+            city.render(dt,264+sceneWidth/2,122,sceneWidth-sceneWidth/2,sceneHeight);
+        }else city.render(dt,264,122,sceneWidth,sceneHeight);
+        if(showEdges&&selected!=null&&!splitView)drawEdges();
+        stage.getViewport().apply();stage.act(dt);stage.draw();drawLabels();
         diagnostics.setVisible(diagnostic);if(diagnostic){var samples=frameTimes.stream().sorted().toList();float p95=samples.get((int)(samples.size()*.95));diagnostics.setText(Gdx.graphics.getFramesPerSecond()+" FPS / p95 "+String.format(Locale.ROOT,"%.1f",p95)+" ms / heap "+(Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory())/1048576+" MB / "+city.buildings().size()+" nodes");}
+    }
+    private void drawLabels(){
+        if(splitView||anonymous.isChecked())return;
+        var batch=stage.getBatch();BitmapFont font=skin.getFont("default-font");batch.begin();font.setColor(MUTED);
+        if(selected!=null){var b=city.selected();if(b!=null){Vector3 v=new Vector3();b.bounds.getCenter(v);v.y=b.bounds.max.y+10;city.camera.project(v,264,122,Gdx.graphics.getWidth()-564,Gdx.graphics.getHeight()-202);if(v.x>280&&v.x<Gdx.graphics.getWidth()-310&&v.y>160&&v.y<Gdx.graphics.getHeight()-170)font.draw(batch,b.file.path().substring(b.file.path().lastIndexOf('/')+1),v.x,v.y);}}
+        font.setColor(Color.WHITE);batch.end();
     }
     private void drawEdges(){
         HdpiUtils.glViewport(264,122,Math.max(1,Gdx.graphics.getWidth()-564),Math.max(1,Gdx.graphics.getHeight()-202));lines.setProjectionMatrix(city.camera.combined);lines.begin(ShapeRenderer.ShapeType.Line);lines.setColor(CYAN);
@@ -291,5 +321,5 @@ public final class CodeverseApp extends ApplicationAdapter {
         lines.end();HdpiUtils.glViewport(0,0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
     }
     @Override public void resize(int w,int h){if(stage==null)return;stage.getViewport().update(w,h,true);top.setBounds(0,h-80,w,80);side.setBounds(0,122,264,h-202);inspectPanel.setBounds(w-300,122,300,h-202);bottom.setBounds(0,0,w,122);header.setPosition(290,h-123);metrics.setPosition(290,h-149);diagnostics.setPosition(290,145);}
-    @Override public void dispose(){generation.incrementAndGet();worker.shutdownNow();stage.dispose();skin.dispose();city.close();lines.dispose();if(store!=null)try{store.close();}catch(Exception ignored){}}
+    @Override public void dispose(){generation.incrementAndGet();worker.shutdownNow();stage.dispose();skin.dispose();city.close();comparisonCity.close();lines.dispose();if(store!=null)try{store.close();}catch(Exception ignored){}}
 }
