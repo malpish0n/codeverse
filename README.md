@@ -52,7 +52,7 @@ Cache, settings and demo data live in the platform application-data folder (`~/L
 
 Six Gradle modules: `desktop-ui`, `renderer-3d`, `scene-model`, `git-indexer`, `code-analyzer`, `storage`. Java 25, libGDX 1.14.2, JGit 7.8.0, LWJGL 3.4.3 and SQLite. Versions and dependency lockfiles are committed. Import parsing is bounded and heuristic; repository work runs on a cancellable worker. Urban geometry uses static mesh batches; height changes and district separation run on the GPU. Camera position and look target use frame-rate-independent damping. Selection uses a shader uniform without rebuilding the city. The interface bundles Roboto.
 
-Tests cover merge-base vs tip-to-tip, rename/add/delete/modify, native `git diff` agreement, bare/empty/detached repositories, cancellation, Unicode, binary/large/LFS/symlink entries, deterministic layout, persistent layout, 100k aggregation, dependency cycles and cache isolation.
+Tests cover merge-base vs tip-to-tip, rename/add/delete/modify, native `git diff` agreement, bare/empty/detached repositories, cancellation, Unicode, binary/large/LFS/symlink entries, deterministic layout, persistent layout, 100k aggregation, dependency cycles, cache isolation and camera damping at 30/60/120/144 Hz.
 
 [Measured benchmarks](docs/benchmarks.json): on an Apple M1 Pro, the 10,000-building renderer recorded p95 4.29 ms for the steady scene and 3.69 ms during drone/explode animation after warmup without VSync. A 10,000-file fixture took 538 ms to read; 2,000 commits from a 10,000-commit history took 720 ms. The history fixture uses unchanged trees and is not a worst-case churn benchmark. No claim is made about Windows GPU performance or all repositories.
 
