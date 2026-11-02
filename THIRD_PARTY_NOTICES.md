@@ -9,7 +9,7 @@ The bundled Java runtime includes its own `legal` directory; redistribution must
 - SQLite JDBC 3.50.3.0: Apache-2.0; SQLite engine is public domain.
 - Gson 2.13.2: Apache-2.0.
 - SLF4J 2.0.17: MIT.
-- Inter font: SIL Open Font License 1.1, included next to the font.
+- Roboto font: SIL Open Font License 1.1, included next to the font.
 - Gradle wrapper: Apache-2.0.
 
 Transitive dependencies are included in the Gradle dependency report. This summary is

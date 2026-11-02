@@ -265,7 +265,7 @@ public final class CodeverseApp extends ApplicationAdapter {
     s.add("white", t);
     BitmapFont font = new BitmapFont();
     try {
-      var generator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/Inter.ttf"));
+      var generator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/Roboto.ttf"));
       var param = new FreeTypeFontGenerator.FreeTypeFontParameter();
       param.size = 30;
       param.characters = FreeTypeFontGenerator.DEFAULT_CHARS + "ąćęłńóśźżĄĆĘŁŃÓŚŹŻ→●—·";
