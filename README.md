@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="desktop-ui/src/main/resources/icons/codeverse-256.png" width="104" alt="CODEVERSE icon">
+  <img src="docs/media/icon.png" width="104" alt="CODEVERSE icon">
 </p>
 <h1 align="center">CODEVERSE</h1>
 <p align="center"><strong>Your repository. A living city.</strong></p>
