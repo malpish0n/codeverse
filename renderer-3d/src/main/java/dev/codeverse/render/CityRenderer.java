@@ -264,6 +264,28 @@ public final class CityRenderer implements AutoCloseable {
                   ? Color.valueOf("6B945D")
                   : Color.valueOf("9A9F97"));
         }
+        for (var path : UrbanInfill.paths(block)) {
+          float dx = path.end().x() - path.start().x(), dz = path.end().z() - path.start().z();
+          mesh.transform(
+              (path.start().x() + path.end().x()) / 2,
+              (path.start().z() + path.end().z()) / 2,
+              (float) Math.toDegrees(Math.atan2(dz, dx)));
+          fixed(
+              0,
+              -.98f,
+              0,
+              (float) Math.hypot(dx, dz),
+              .05f,
+              path.width(),
+              0,
+              Color.valueOf("B8B5A6"));
+        }
+        if (block.district() == District.HOMES || block.district() == District.GARDENS)
+          for (var lot : block.lots()) {
+            mesh.transform(lot.x(), lot.z(), lot.angle());
+            for (float side : new float[] {-1, 1})
+              fixed(side * (lot.width() / 2 + 2.5f), -1, 0, .65f, 1.5f, lot.depth() + 4, 0, GREEN);
+          }
         for (var feature : UrbanInfill.forBlock(block)) drawInfill(feature, block.district());
         mesh.transform(0, 0, 0);
       }

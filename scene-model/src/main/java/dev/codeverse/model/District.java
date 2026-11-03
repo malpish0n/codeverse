@@ -4,7 +4,7 @@ package dev.codeverse.model;
 public enum District {
   HOMES("Residential homes", "819C69", .30f),
   EVERYDAY("Everyday quarter", "A58C76", .80f),
-  GARDENS("Garden villas", "B9B49C", .72f),
+  GARDENS("Garden residences", "B9B49C", .72f),
   SKYLINE("Skyline center", "769EAF", 1.35f);
   public final String label, color;
   public final float heightScale;
