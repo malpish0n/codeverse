@@ -144,10 +144,13 @@ public final class CityGenerator {
         float side = Math.min(dx, dz);
         float width = side * (float) random.nextDouble(.50, .66),
             depth = side * (float) random.nextDouble(.50, .68);
-        Point center = point(lx, lz), tangent = point(lx + 1, lz);
+        boolean sideStreet = Math.min(lx - x, x + w - lx) < Math.min(lz - z, z + d - lz);
+        Point center = point(lx, lz), tangent = sideStreet ? point(lx, lz + 1) : point(lx + 1, lz);
         float angle =
             (float) Math.toDegrees(Math.atan2(tangent.z - center.z, tangent.x - center.x));
-        if (col == 0 || col == cols - 1) angle += 90;
+        var orientation = new SplittableRandom(settings.seed() ^ mix(id * 4096L + row * 64L + col));
+        float variation = district == District.GARDENS ? 9 : district == District.HOMES ? 7 : 4;
+        angle += (float) orientation.nextDouble(-variation, variation);
         lots.add(
             new Lot(
                 center.x, center.z, width * settings.scale(), depth * settings.scale(), angle, id));
@@ -181,7 +184,7 @@ public final class CityGenerator {
   private Point point(float x, float z) {
     double phase = (settings.seed() & 0xffff) * .00017;
     double bend =
-        settings.style() == Style.DOWNTOWN ? 12 : settings.style() == Style.GARDEN ? 52 : 42;
+        settings.style() == Style.DOWNTOWN ? 12 : settings.style() == Style.GARDEN ? 85 : 70;
     float px = (float) (x + bend * Math.sin(z / 260.0 + phase) + bend * .25 * Math.sin(x / 410.0));
     float pz =
         (float) (z + bend * .7 * Math.sin(x / 310.0 + phase) + bend * .2 * Math.sin(z / 490.0));

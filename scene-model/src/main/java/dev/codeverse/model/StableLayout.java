@@ -6,7 +6,7 @@ import java.util.*;
 
 /** Append-only parcel allocation keeps existing files still as a repository grows. */
 public final class StableLayout {
-  public static final int VERSION = 3;
+  public static final int VERSION = 4;
   private final Map<String, Cell> cells = new LinkedHashMap<>();
   private final Map<String, Integer> modules = new LinkedHashMap<>();
   private final Map<String, ArrayDeque<Lot>> available = new HashMap<>();

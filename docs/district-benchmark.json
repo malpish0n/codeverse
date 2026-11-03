@@ -1,1 +1,1 @@
-{"inputFiles":10000,"renderNodes":10000,"warmupFrames":180,"measuredFrames":179,"frameMsP50":4.580125,"frameMsP95":8.805458,"animatedFrameMsP95":8.530542,"animatedMeasuredFrames":359,"heapUsedBytes":63767416,"gpu":"Apple M1 Pro"}
+{"inputFiles":10000,"renderNodes":10000,"warmupFrames":180,"measuredFrames":179,"frameMsP50":5.093,"frameMsP95":8.724708,"animatedFrameMsP95":8.895916,"animatedMeasuredFrames":359,"heapUsedBytes":83462256,"gpu":"Apple M1 Pro"}

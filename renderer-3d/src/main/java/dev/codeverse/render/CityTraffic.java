@@ -6,7 +6,7 @@ import dev.codeverse.model.CityGenerator.*;
 import java.util.*;
 
 final class CityTraffic implements AutoCloseable {
-  private record Car(TrafficRoute route, float offset, Color color) {}
+  private record Car(StreetNetwork.Vehicle vehicle, Color color) {}
 
   private final List<Car> cars = new ArrayList<>();
   private final CityMesh mesh = new CityMesh();
@@ -18,6 +18,9 @@ final class CityTraffic implements AutoCloseable {
     Color.valueOf("E1E4DF"),
     Color.valueOf("649989")
   };
+
+  private double lastTime = Double.NaN;
+  private float carWidth;
 
   CityTraffic() {
     box(0, .1f, 0, 2.35f, .43f, 1, Color.WHITE);
@@ -38,43 +41,45 @@ final class CityTraffic implements AutoCloseable {
 
   void plan(Plan plan) {
     cars.clear();
-    // Round-robin road sampling distributes a bounded traffic budget over the whole city.
-    List<TrafficRoute> allRoutes =
-        plan.roads().stream()
-            .filter(r -> r.points().size() > 1)
-            .map(TrafficRoute::new)
-            .filter(r -> r.length > 30)
-            .toList();
-    List<TrafficRoute> routes = new ArrayList<>();
-    int budget = Math.min(240, allRoutes.size());
-    for (int i = 0; i < budget; i++) routes.add(allRoutes.get(i * allRoutes.size() / budget));
-    int[] counts = new int[routes.size()];
+    lastTime = Double.NaN;
+    var network = new StreetNetwork(plan);
+    carWidth =
+        (float)
+            Math.min(3.6, network.edges.stream().mapToDouble(e -> e.width * .23).min().orElse(2));
+    var streets = new ArrayList<StreetNetwork.Edge>();
+    int streetCount = Math.min(600, network.edges.size());
+    for (int i = 0; i < streetCount; i++)
+      streets.add(network.edges.get(i * network.edges.size() / streetCount));
+    int[] counts = new int[streets.size()];
     int total = 0;
     for (int pass = 0; pass < 18 && total < 1200; pass++)
-      for (int i = 0; i < routes.size() && total < 1200; i++) {
-        int wanted = Math.min(18, Math.max(2, (int) (routes.get(i).length / 38)));
+      for (int i = 0; i < counts.length && total < 1200; i++) {
+        int wanted = Math.min(18, Math.max(2, (int) (streets.get(i).length / 22)));
         if (pass < wanted) {
           counts[i]++;
           total++;
         }
       }
-    for (int i = 0; i < routes.size(); i++)
-      for (int car = 0; car < counts[i]; car++) {
-        var route = routes.get(i);
+    for (int i = 0; i < counts.length; i++)
+      for (int n = 0; n < counts[i]; n++)
         cars.add(
             new Car(
-                route, route.length * (car + .37f) / counts[i], colors[(i + car) % colors.length]));
-      }
+                new StreetNetwork.Vehicle(
+                    streets.get(i), n % 2 == 0, (n + .37f) / counts[i], i * 7919L + n),
+                colors[(i + n) % colors.length]));
   }
 
   void render(Camera camera, double time) {
+    float dt = Double.isNaN(lastTime) ? 0 : (float) Math.max(0, time - lastTime);
+    lastTime = time;
     for (var car : cars) {
-      var p = car.route.at(car.offset + time * car.route.speed);
-      if (!camera.frustum.sphereInFrustum(p.x(), 2, p.z(), car.route.carWidth * 2)) continue;
+      car.vehicle.advance(dt);
+      var p = car.vehicle.pose();
+      if (!camera.frustum.sphereInFrustum(p.x(), 2, p.z(), carWidth * 2)) continue;
       transform
           .setToTranslation(p.x(), -.52f, p.z())
           .rotate(Vector3.Y, -p.angle())
-          .scale(car.route.carWidth, car.route.carWidth, car.route.carWidth);
+          .scale(carWidth, carWidth, carWidth);
       mesh.render(camera, 1, 0, -1, 0, transform, car.color);
     }
   }
