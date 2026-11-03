@@ -26,7 +26,12 @@ public final class Data {
 
   public record Edge(String source, String target, String kind, double confidence) {}
 
-  public record Cell(String path, float x, float z, float width, int layer) {}
+  public record Cell(
+      String path, float x, float z, float width, int layer, float depth, float angle, int block) {
+    public Cell(String path, float x, float z, float width, int layer) {
+      this(path, x, z, width, layer, width, 0, -1);
+    }
+  }
 
   public static float height(int loc) {
     return (float) Math.min(120, Math.max(8, 8 + 16 * Math.log1p(loc) / Math.log(2)));
