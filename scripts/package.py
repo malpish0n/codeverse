@@ -23,6 +23,7 @@ command = [packager, '--type', args.type, '--name', 'CODEVERSE', '--input', str(
            '--description', 'Offline Git history explorer / preview 0.1.0',
            '--java-options', '--enable-native-access=ALL-UNNAMED']
 if platform.system() == 'Darwin':
+    command += ['--icon', str(root / 'desktop-ui/src/main/resources/icons/codeverse.icns')]
     command += ['--java-options', '-XstartOnFirstThread', '--mac-package-identifier', 'dev.codeverse.desktop']
 if platform.system() == 'Windows' and args.type != 'app-image':
     command += ['--win-menu', '--win-shortcut', '--win-dir-chooser']

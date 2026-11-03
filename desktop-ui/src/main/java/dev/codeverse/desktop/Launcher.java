@@ -22,6 +22,7 @@ public final class Launcher {
         });
     Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
     config.setTitle("CODEVERSE / The living history of code");
+    config.setWindowIcon("icons/codeverse-32.png", "icons/codeverse-128.png", "icons/codeverse-256.png");
     config.setWindowedMode(1440, 900);
     config.setWindowSizeLimits(1100, 720, -1, -1);
     config.useVsync(true);
