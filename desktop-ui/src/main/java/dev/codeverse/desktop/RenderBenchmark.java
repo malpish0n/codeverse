@@ -38,13 +38,30 @@ public final class RenderBenchmark extends ApplicationAdapter {
               "Java",
               "module" + (i / 64),
               "text",
-              ""));
+              sample(i)));
     var snap = Aggregation.forRendering(new Snapshot("benchmark", files));
     var layout = new StableLayout();
     var cells = layout.reserve(snap.files().stream().map(FileRevision::path).toList());
     city.setPlan(layout.plan());
     city.setScene(snap, cells, List.of(), Map.of(), true);
     last = System.nanoTime();
+  }
+
+  private static String sample(int index) {
+    int variant = index % 5;
+    if (variant == 0) return "class Tiny {}";
+    if (variant == 1)
+      return "class Block { int run(int value) {\n"
+          + "value += 1;\n".repeat(30)
+          + "return value; }}";
+    StringBuilder text = new StringBuilder("class Sample {\n");
+    for (int k = 0; k < (variant == 2 ? 32 : variant == 3 ? 90 : 55); k++)
+      text.append("int metric")
+          .append(k)
+          .append(" = ")
+          .append(k)
+          .append(variant == 4 ? "; " : ";\n");
+    return text.append("}").toString();
   }
 
   public void render() {

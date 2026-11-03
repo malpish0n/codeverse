@@ -724,7 +724,7 @@ public final class CodeverseApp extends ApplicationAdapter {
               store == null
                   ? Path.of(System.getProperty("java.io.tmpdir"), "codeverse")
                   : store.home();
-          return DemoRepository.create(home.resolve("demo-city-v2"));
+          return DemoRepository.create(home.resolve("demo-city-v3"));
         },
         this::open);
   }
@@ -945,6 +945,7 @@ public final class CodeverseApp extends ApplicationAdapter {
       return;
     }
     var h = hotspots.getOrDefault(path, new Hotspot(0, 0, 0, 0));
+    var profile = dev.codeverse.model.BuildingProfile.analyze(f);
     inspector.setText(
         f.path()
             + "\n\n"
@@ -957,6 +958,15 @@ public final class CodeverseApp extends ApplicationAdapter {
             + f.bytes()
             + " bytes\n\nHEIGHT\nclamp(8 + 16 × log2(1+LOC),\n8, 120) = "
             + Math.round(Data.height(f.loc()))
+            + "\n\nBUILDING MODEL\n"
+            + profile.model().label
+            + "\nRichness: "
+            + profile.richness()
+            + "/100"
+            + "\nCompactness: "
+            + profile.compactness()
+            + "/100"
+            + "\nLexical signals, not code quality.\nComments and strings excluded."
             + "\n\nCHANGE FREQUENCY\n"
             + h.commits()
             + " commits / "

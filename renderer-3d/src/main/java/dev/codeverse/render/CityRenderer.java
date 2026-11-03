@@ -51,6 +51,7 @@ public final class CityRenderer implements AutoCloseable {
 
   public static final class Building {
     public FileRevision file;
+    public dev.codeverse.model.BuildingProfile profile;
     public Cell cell;
     public float height, goal, from;
     public int renderId;
@@ -91,6 +92,7 @@ public final class CityRenderer implements AutoCloseable {
       var b = buildings.computeIfAbsent(f.path(), p -> new Building(f, cells.get(p)));
       b.retiring = false;
       b.file = f;
+      b.profile = dev.codeverse.model.BuildingProfile.analyze(f);
       b.cell = cells.get(f.path());
       b.inverse
           .setToTranslation(b.cell.x(), 0, b.cell.z())
@@ -144,55 +146,85 @@ public final class CityRenderer implements AutoCloseable {
           depth = b.cell.depth() * (.75f + (seed % 3) * .07f);
       Color facade = color(b, seed);
       mesh.building(b.renderId);
-      // A podium, narrower tower and roof plant room create a varied, readable skyline.
-      float podium = Math.min(12, b.goal), oldPodium = Math.min(12, b.from);
-      mesh.box(x, 0, z, width, podium, depth, 0, oldPodium, layer, facade, true);
-      if (b.goal > 12 || b.from > 12) {
-        mesh.box(
-            x,
-            podium,
-            z,
-            width * .80f,
-            Math.max(0, b.goal - podium),
-            depth * .84f,
-            oldPodium,
-            Math.max(0, b.from - oldPodium),
-            layer,
-            facade,
-            true);
+      // Every section shares the GPU height transition and stays inside its parcel.
+      switch (b.profile.model()) {
+        case HOUSE -> {
+          section(b, 0, 0, width * .78f, depth * .75f, 0, .72f, facade, true);
+          section(b, 0, 0, width * .88f, depth * .84f, .72f, .80f, ROOF, false);
+          section(b, 0, 0, width * .58f, depth * .72f, .80f, .90f, ROOF, false);
+          section(b, 0, 0, width * .28f, depth * .62f, .90f, 1, ROOF, false);
+        }
+        case BLOCK -> {
+          section(b, 0, 0, width, depth * .90f, 0, .92f, facade, true);
+          section(b, 0, 0, width, depth * .94f, .92f, 1, ROOF, false);
+        }
+        case COURTYARD -> {
+          section(b, -width * .34f, 0, width * .30f, depth, 0, 1, facade, true);
+          section(b, width * .34f, 0, width * .30f, depth, 0, .82f, facade, true);
+          section(b, 0, depth * .34f, width * .38f, depth * .32f, 0, .70f, facade, true);
+        }
+        case TERRACES -> {
+          section(b, 0, 0, width, depth, 0, .34f, facade, true);
+          section(
+              b, -width * .10f, depth * .10f, width * .78f, depth * .78f, .34f, .65f, facade, true);
+          section(
+              b, -width * .20f, depth * .20f, width * .54f, depth * .54f, .65f, 1, facade, true);
+          section(
+              b,
+              width * .40f,
+              0,
+              width * .12f,
+              depth * .85f,
+              .34f,
+              .36f,
+              Color.valueOf("50866B"),
+              false);
+          section(
+              b,
+              width * .22f,
+              depth * .10f,
+              width * .12f,
+              depth * .62f,
+              .65f,
+              .67f,
+              Color.valueOf("50866B"),
+              false);
+        }
+        case TOWER -> {
+          section(b, 0, 0, width, depth, 0, .17f, facade, true);
+          section(b, 0, 0, width * .62f, depth * .65f, .17f, .88f, facade, true);
+          section(b, 0, 0, width * .45f, depth * .48f, .88f, .96f, ROOF, false);
+          section(b, 0, 0, width * .14f, depth * .16f, .96f, 1, ROOF, false);
+        }
       }
-      float cap = b.goal > 0 ? 1.1f : 0, oldCap = b.from > 0 ? 1.1f : 0;
-      mesh.box(x, b.goal, z, width * .84f, cap, depth * .88f, b.from, oldCap, layer, ROOF, false);
-      if (seed % 3 == 0)
-        mesh.box(
-            x,
-            b.goal + cap,
-            z,
-            width * .30f,
-            cap * 3,
-            depth * .36f,
-            b.from + oldCap,
-            oldCap * 3,
-            layer,
-            ROOF,
-            false);
-      if (seed % 7 == 0)
-        mesh.box(
-            x,
-            b.goal + cap,
-            z,
-            .55f,
-            cap * 9,
-            .55f,
-            b.from + oldCap,
-            oldCap * 9,
-            layer,
-            ROOF,
-            false);
     }
     mesh.transform(0, 0, 0);
     mesh.finish();
     dirty = false;
+  }
+
+  private void section(
+      Building b,
+      float x,
+      float z,
+      float width,
+      float depth,
+      float bottom,
+      float top,
+      Color color,
+      boolean windows) {
+    mesh.box(
+        x,
+        b.goal * bottom,
+        z,
+        width,
+        b.goal * (top - bottom),
+        depth,
+        b.from * bottom,
+        b.from * (top - bottom),
+        b.cell.layer(),
+        color,
+        windows);
   }
 
   private void drawPlan() {

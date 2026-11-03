@@ -22,8 +22,19 @@ public final class DemoRepository {
             StringBuilder s = new StringBuilder("package demo." + modules[m] + ";\n");
             if (m > 0) s.append("import demo." + modules[m - 1] + ".Component" + index + ";\n");
             s.append("public class Component" + index + " {\n");
-            for (int k = 0; k < 5 + (index * 7 + m * 13) % 90; k++)
-              s.append("    // Demo revision " + step + ", responsibility " + k + "\n");
+            int variant = (index + m) % 5;
+            if (variant == 0) s.append("  public int value() { return 1; }\n");
+            else if (variant == 1) {
+              s.append("  public int total(int value) {\n");
+              for (int k = 0; k < 18; k++) s.append("    value += 1;\n");
+              s.append("    return value;\n  }\n");
+            } else {
+              int fields = variant == 2 ? 32 : variant == 3 ? 90 : 55;
+              for (int k = 0; k < fields; k++)
+                s.append(
+                    "  private int metric" + k + " = " + k + ";" + (variant == 4 ? " " : "\n"));
+              s.append("\n");
+            }
             s.append("}\n");
             Files.writeString(file, s);
           }
