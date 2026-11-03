@@ -13,10 +13,10 @@ public final class DemoRepository {
     Files.createDirectories(path);
     try (Git git = Git.init().setDirectory(path.toFile()).setInitialBranch("main").call()) {
       String[] modules = {"ui", "application", "domain", "infra", "analytics", "tests"};
-      for (int step = 0; step < 12; step++) {
+      for (int step = 0; step < 24; step++) {
         for (int m = 0; m < modules.length; m++) {
-          for (int n = 0; n < 4; n++) {
-            int index = step * 4 + n;
+          for (int n = 0; n < new int[] {9, 5, 14, 3, 8, 4}[m]; n++) {
+            int index = step * new int[] {9, 5, 14, 3, 8, 4}[m] + n;
             Path file = path.resolve("src/" + modules[m] + "/" + "Component" + index + ".java");
             Files.createDirectories(file.getParent());
             StringBuilder s = new StringBuilder("package demo." + modules[m] + ";\n");
@@ -38,7 +38,7 @@ public final class DemoRepository {
             new PersonIdent(
                 step % 2 == 0 ? "Alex Developer" : "Sam Maintainer",
                 "demo@codeverse.local",
-                Date.from(Instant.now().minusSeconds((12 - step) * 86400L)),
+                Date.from(Instant.now().minusSeconds((24 - step) * 86400L)),
                 TimeZone.getTimeZone("UTC"));
         git.commit()
             .setMessage(
@@ -56,7 +56,7 @@ public final class DemoRepository {
                       "Add dependency insights",
                       "Prepare the release"
                     }
-                    [step])
+                    [step % 12])
             .setAuthor(who)
             .setCommitter(who)
             .call();

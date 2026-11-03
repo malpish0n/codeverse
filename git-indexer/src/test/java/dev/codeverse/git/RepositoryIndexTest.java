@@ -181,8 +181,8 @@ class RepositoryIndexTest {
     Path demo = temp.resolve("demo");
     DemoRepository.create(demo);
     try (var r = new RepositoryIndex(demo)) {
-      assertEquals(288, r.snapshot("main", () -> false, x -> {}).files().size());
-      assertEquals(12, r.history("main", true, () -> false).size());
+      assertEquals(1032, r.snapshot("main", () -> false, x -> {}).files().size());
+      assertEquals(24, r.history("main", true, () -> false).size());
       assertEquals(4, r.diff("main", "feature/observability", false).size());
     }
   }

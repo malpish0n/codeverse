@@ -13,6 +13,29 @@ final class CityMesh implements AutoCloseable {
   private final ShortArray indices = new ShortArray();
   private static final int STRIDE = 12;
   private int buildingId = -1;
+  private float originX, originZ, cos = 1, sin = 0;
+
+  void transform(float x, float z, float degrees) {
+    originX = x;
+    originZ = z;
+    cos = (float) Math.cos(Math.toRadians(degrees));
+    sin = (float) Math.sin(Math.toRadians(degrees));
+  }
+
+  void surface(
+      java.util.List<dev.codeverse.model.CityGenerator.Point> corners,
+      float y,
+      int layer,
+      Color color) {
+    if (vertices.size / STRIDE + 4 > 60000) flush();
+    float[] p = new float[12];
+    for (int i = 0; i < 4; i++) {
+      p[i * 3] = corners.get(i).x();
+      p[i * 3 + 1] = y;
+      p[i * 3 + 2] = corners.get(i).z();
+    }
+    face(p, 0, 1, 0, color.toFloatBits(), -1, 0, y, y, layer);
+  }
 
   void building(int id) {
     buildingId = id;
@@ -179,8 +202,11 @@ final class CityMesh implements AutoCloseable {
       int layer) {
     int start = vertices.size / STRIDE;
     for (int i = 0; i < 4; i++) {
-      vertices.add(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
-      vertices.add(nx, ny, nz);
+      vertices.add(
+          originX + p[i * 3] * cos - p[i * 3 + 2] * sin,
+          p[i * 3 + 1],
+          originZ + p[i * 3] * sin + p[i * 3 + 2] * cos);
+      vertices.add(nx * cos - nz * sin, ny, nx * sin + nz * cos);
       vertices.add(color);
       vertices.add(u < 0 ? -1 : ((i == 1 || i == 2) ? u : 0), i >= 2 ? v : 0);
       vertices.add(i >= 2 ? high : low, layer, buildingId);

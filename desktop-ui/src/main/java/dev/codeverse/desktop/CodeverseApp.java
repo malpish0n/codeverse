@@ -82,6 +82,7 @@ public final class CodeverseApp extends ApplicationAdapter {
     public java.util.List<String> recent = new ArrayList<>();
     public boolean reducedMotion = false;
     public boolean anonymous = false;
+    public CityGenerator.Settings cityLayout = CityGenerator.Settings.defaults();
   }
 
   public static class Bookmark {
@@ -416,6 +417,7 @@ public final class CodeverseApp extends ApplicationAdapter {
     for (String view :
         new String[] {"Overview", "Branches", "Timeline", "Dependencies", "Hotspots", "Bookmarks"})
       side.add(button(view, () -> view(view))).growX().height(35).padBottom(5).row();
+    side.add(button("City generator", this::generatorDialog)).growX().height(35).padBottom(5).row();
     side.add(label("EXPLORE FILES", MUTED)).left().padTop(20).padBottom(12).row();
     search = new TextField("", skin);
     search.setMessageText("Search path / language");
@@ -632,6 +634,88 @@ public final class CodeverseApp extends ApplicationAdapter {
     stage.setKeyboardFocus(path);
   }
 
+  private void generatorDialog() {
+    Dialog dialog = new Dialog("City generator", skin);
+    var content = dialog.getContentTable();
+    content.pad(18).defaults().pad(7);
+    var current = layout.settings();
+    TextField seed = new TextField(Long.toString(current.seed()), skin);
+    SelectBox<String> style = new SelectBox<>(skin);
+    style.setItems("Organic", "Downtown", "Garden");
+    style.setSelectedIndex(current.style().ordinal());
+    Slider scale = new Slider(.8f, 2.5f, .1f, false, skin);
+    scale.setValue(current.scale());
+    Label value = label(String.format(Locale.ROOT, "%.1fx", scale.getValue()), TEXT);
+    on(scale, () -> value.setText(String.format(Locale.ROOT, "%.1fx", scale.getValue())));
+    content.add(label("Seed", MUTED)).left();
+    content.add(seed).width(240);
+    content
+        .add(
+            button(
+                "New seed",
+                () -> seed.setText(Long.toString(new java.util.Random().nextInt(1000000000)))))
+        .width(100)
+        .row();
+    content.add(label("District style", MUTED)).left();
+    content.add(style).width(240).colspan(2).left().row();
+    content.add(label("City scale", MUTED)).left();
+    content.add(scale).width(240);
+    content.add(value).row();
+    Label explanation =
+        label(
+            "Organic: curved avenues and irregular blocks.\n"
+                + "Downtown: denser street frontage. Garden: more parks.\n"
+                + "The same seed recreates the same city. Generate moves parcels;\n"
+                + "Git history and source files stay unchanged.",
+            MUTED);
+    content.add(explanation).colspan(3).left().padTop(12).row();
+    Label error = label("", Color.SALMON);
+    content.add(error).colspan(3).left().row();
+    content
+        .add(
+            button(
+                "Generate city",
+                () -> {
+                  if (snapshot == null || busy) {
+                    error.setText("Open a repository and wait for indexing first.");
+                    return;
+                  }
+                  long number;
+                  try {
+                    number = Long.parseLong(seed.getText().trim());
+                  } catch (NumberFormatException e) {
+                    error.setText("Seed must be a whole number.");
+                    return;
+                  }
+                  playing = false;
+                  guided = false;
+                  city.tour = false;
+                  splitView = false;
+                  layout.configure(
+                      new CityGenerator.Settings(
+                          number,
+                          CityGenerator.Style.values()[style.getSelectedIndex()],
+                          scale.getValue()));
+                  preferences.cityLayout = layout.settings();
+                  savePrefs();
+                  display(true);
+                  dialog.hide();
+                  status.setText(
+                      "Generated city / seed "
+                          + number
+                          + " / "
+                          + layout.plan().blocks().size()
+                          + " blocks");
+                }))
+        .height(38)
+        .width(180)
+        .colspan(3)
+        .padTop(10)
+        .row();
+    dialog.button("Close");
+    dialog.show(stage);
+  }
+
   private void demo() {
     runTask(
         "Preparing demo repository",
@@ -640,7 +724,7 @@ public final class CodeverseApp extends ApplicationAdapter {
               store == null
                   ? Path.of(System.getProperty("java.io.tmpdir"), "codeverse")
                   : store.home();
-          return DemoRepository.create(home.resolve("demo-repository"));
+          return DemoRepository.create(home.resolve("demo-city-v2"));
         },
         this::open);
   }
@@ -662,7 +746,10 @@ public final class CodeverseApp extends ApplicationAdapter {
         data -> {
           repoPath = path;
           selected = null;
-          layout.clear();
+          layout.configure(
+              preferences.cityLayout == null
+                  ? CityGenerator.Settings.defaults()
+                  : preferences.cityLayout);
           snapshot = data.snapshot;
           history = data.history;
           refs = data.refs.toArray(String[]::new);
@@ -761,6 +848,7 @@ public final class CodeverseApp extends ApplicationAdapter {
     edges = Dependencies.analyze(snapshot);
     Snapshot visual = Aggregation.forRendering(snapshot);
     layout.reserve(visual.files().stream().map(FileRevision::path).toList());
+    city.setPlan(layout.plan());
     city.setScene(visual, layout.cells(), changes, hotspots, reset);
     if (follow && selected != null) city.focus(selected);
     metrics.setText(
@@ -1018,6 +1106,8 @@ public final class CodeverseApp extends ApplicationAdapter {
           snapshot = new Snapshot(v.b.sha(), java.util.List.copyOf(union.values()));
           display(false);
           if (splitView) {
+            comparisonCity.setPlan(layout.plan());
+            city.setPlan(layout.plan());
             comparisonCity.setScene(v.a, layout.cells(), java.util.List.of(), Map.of(), true);
             city.setScene(v.b, layout.cells(), changes, hotspots, true);
             city.distance *= 1.6f;
@@ -1280,12 +1370,14 @@ public final class CodeverseApp extends ApplicationAdapter {
                         hotspots = v.hotspots;
                         changes = java.util.List.of();
                         display(true);
-                        city.yaw = b.yaw;
-                        city.pitch = b.pitch;
-                        city.distance = b.distance;
-                        city.target().set(b.x, b.y, b.z);
-                        city.exploded = b.exploded;
-                        city.spacing = b.spacing;
+                        if (b.layout == null || b.layout.version() == StableLayout.VERSION) {
+                          city.yaw = b.yaw;
+                          city.pitch = b.pitch;
+                          city.distance = b.distance;
+                          city.target().set(b.x, b.y, b.z);
+                          city.exploded = b.exploded;
+                          city.spacing = b.spacing;
+                        }
                         select(b.path);
                         repoLabel.setText(repoPath.getFileName() + " / LOCAL");
                       });

@@ -47,6 +47,7 @@ public final class RenderBenchmark extends ApplicationAdapter {
         List.of(),
         Map.of(),
         true);
+    city.setPlan(layout.plan());
     last = System.nanoTime();
   }
 

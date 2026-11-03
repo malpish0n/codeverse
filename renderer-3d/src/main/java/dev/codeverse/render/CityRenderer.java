@@ -12,6 +12,15 @@ import java.util.*;
 public final class CityRenderer implements AutoCloseable {
   public final PerspectiveCamera camera = new PerspectiveCamera(48, 1280, 800);
   private final CityMesh mesh = new CityMesh();
+  private CityGenerator.Plan plan = CityGenerator.Plan.empty();
+
+  public void setPlan(CityGenerator.Plan plan) {
+    if (this.plan != plan) {
+      this.plan = plan;
+      dirty = true;
+    }
+  }
+
   private final Map<String, Building> buildings = new LinkedHashMap<>();
   private final Vector3 center = new Vector3(), target = new Vector3(), look = new Vector3();
   private final Vector3 position = new Vector3(),
@@ -49,6 +58,8 @@ public final class CityRenderer implements AutoCloseable {
     public String change = "";
     public double hotspot;
     public final BoundingBox bounds = new BoundingBox();
+    public final BoundingBox localBounds = new BoundingBox();
+    public final Matrix4 inverse = new Matrix4();
 
     Building(FileRevision f, Cell c) {
       file = f;
@@ -81,6 +92,10 @@ public final class CityRenderer implements AutoCloseable {
       b.retiring = false;
       b.file = f;
       b.cell = cells.get(f.path());
+      b.inverse
+          .setToTranslation(b.cell.x(), 0, b.cell.z())
+          .rotate(Vector3.Y, -b.cell.angle())
+          .inv();
       b.goal = Data.height(f.loc());
       b.change = diff.getOrDefault(f.path(), "");
       b.hotspot = hotspots.getOrDefault(f.path(), new Hotspot(0, 0, 0, 0)).score();
@@ -93,6 +108,7 @@ public final class CityRenderer implements AutoCloseable {
       }
     BoundingBox bounds = new BoundingBox();
     for (var b : buildings.values()) bounds.ext(b.cell.x(), 0, b.cell.z());
+    for (var block : plan.blocks()) for (var p : block.outline()) bounds.ext(p.x(), 0, p.z());
     if (!buildings.isEmpty()) {
       bounds.getCenter(center);
       Vector3 size = new Vector3();
@@ -115,17 +131,17 @@ public final class CityRenderer implements AutoCloseable {
   private void rebuild() {
     mesh.clear();
     int renderId = 0;
-    // Individual city lots avoid overlapping plates when a module spans multiple reserved sectors.
+    drawPlan();
     for (var b : buildings.values()) {
       b.renderId = renderId++;
       mesh.building(-1);
-      float x = b.cell.x(), z = b.cell.z();
+      mesh.transform(b.cell.x(), b.cell.z(), b.cell.angle());
+      float x = 0, z = 0;
       int layer = b.cell.layer();
-      fixed(x, -2.2f, z, 23, 2, 23, layer, ASPHALT);
-      fixed(x, -.7f, z, 19.5f, .7f, 19.5f, layer, PAVEMENT);
+      fixed(x, -.7f, z, b.cell.width() + 4, .7f, b.cell.depth() + 4, layer, PAVEMENT);
       int seed = b.file.path().hashCode() & 0x7fffffff;
       float width = b.cell.width() * (.72f + (seed % 4) * .06f),
-          depth = b.cell.width() * (.75f + (seed % 3) * .07f);
+          depth = b.cell.depth() * (.75f + (seed % 3) * .07f);
       Color facade = color(b, seed);
       mesh.building(b.renderId);
       // A podium, narrower tower and roof plant room create a varied, readable skyline.
@@ -173,59 +189,53 @@ public final class CityRenderer implements AutoCloseable {
             layer,
             ROOF,
             false);
-      mesh.building(-1);
-      fixed(x + 11.1f, -.17f, z, .28f, .08f, 5, layer, MARKING);
-      if (seed % 5 == 0 && buildings.size() < 20000) {
-        fixed(x - 8.1f, 0, z + 8.1f, .65f, 3, .65f, layer, TRUNK);
-        fixed(x - 8.1f, 2.1f, z + 8.1f, 2.8f, 3.8f, 2.8f, layer, GREEN);
-      }
-      // A few parked cars give the streets an immediate sense of scale.
-      if (seed % 11 == 0) {
-        fixed(x + 10.6f, -.7f, z + 5.5f, 1.25f, 1.1f, 3, layer, seed % 2 == 0 ? ROOF : MARKING);
-        fixed(x + 10.6f, .4f, z + 5.5f, .95f, .6f, 1.5f, layer, ASPHALT);
-      }
     }
-    // Join adjacent lots with broad avenues, sidewalks and a central reservation.
-    Map<String, float[]> sectors = new LinkedHashMap<>();
-    Set<String> occupied = new HashSet<>();
-    for (var b : buildings.values()) {
-      occupied.add(Math.round(b.cell.x()) + ":" + Math.round(b.cell.z()) + ":" + b.cell.layer());
-      int sx = Math.round((b.cell.x() - Math.floorMod(Math.round(b.cell.x()), 220)) / 220f);
-      int sz = Math.round((b.cell.z() - Math.floorMod(Math.round(b.cell.z()), 220)) / 220f);
-      String key = sx + ":" + sz + ":" + b.cell.layer();
-      sectors.putIfAbsent(key, new float[] {sx * 220, sz * 220, b.cell.layer()});
-    }
-    for (var s : sectors.values()) {
-      float x = s[0], z = s[1];
-      int layer = (int) s[2];
-      for (int row = 0; row < 8; row++)
-        for (int col = 0; col < 8; col++) {
-          float px = x + col * 23, pz = z + row * 23;
-          if (occupied.contains(Math.round(px) + ":" + Math.round(pz) + ":" + layer)) continue;
-          fixed(px, -2.2f, pz, 23, 2, 23, layer, ASPHALT);
-          fixed(px, -.7f, pz, 19.5f, .7f, 19.5f, layer, PAVEMENT);
-          fixed(px, -.05f, pz, 16, .25f, 16, layer, GREEN);
-          fixed(px, .2f, pz, 2, .1f, 16, layer, PAVEMENT);
-          fixed(px - 5, .2f, pz + 4, 1, 4, 1, layer, TRUNK);
-          fixed(px - 5, 3.2f, pz + 4, 5, 6, 5, layer, GREEN);
-          fixed(px + 4, .2f, pz - 4, 1, 3, 1, layer, TRUNK);
-          fixed(px + 4, 2.4f, pz - 4, 4, 5, 4, layer, GREEN);
-        }
-      fixed(x + 80.5f, -2.3f, z - 29.5f, 220, 2, 36, layer, ASPHALT);
-      fixed(x - 29.5f, -2.3f, z + 80.5f, 36, 2, 220, layer, ASPHALT);
-      fixed(x + 80.5f, -.7f, z - 12, 184, .6f, 2.5f, layer, PAVEMENT);
-      fixed(x - 12, -.7f, z + 80.5f, 2.5f, .6f, 184, layer, PAVEMENT);
-      for (int i = 0; i < 9; i++) {
-        fixed(x - 10 + i * 23, -.04f, z - 29.5f, 9, .06f, .6f, layer, MARKING);
-        fixed(x - 29.5f, -.04f, z - 10 + i * 23, .6f, .06f, 9, layer, MARKING);
-      }
-      for (int i = 0; i < 5; i++) {
-        fixed(x - 21 + i * 3, -.03f, z - 42, 1.5f, .06f, 7, layer, ROOF);
-        fixed(x - 42, -.03f, z - 21 + i * 3, 7, .06f, 1.5f, layer, ROOF);
-      }
-    }
+    mesh.transform(0, 0, 0);
     mesh.finish();
     dirty = false;
+  }
+
+  private void drawPlan() {
+    mesh.transform(0, 0, 0);
+    mesh.building(-1);
+    for (var block : plan.blocks()) {
+      mesh.surface(block.outline(), -.9f, 0, block.park() ? GREEN : Color.valueOf("334548"));
+      for (var p : block.trees()) {
+        fixed(p.x(), -.8f, p.z(), 1.3f, 7, 1.3f, 0, TRUNK);
+        fixed(p.x(), 4, p.z(), 6, 7, 6, 0, GREEN);
+        fixed(p.x(), 9, p.z(), 4, 3, 4, 0, GREEN);
+      }
+    }
+    for (var road : plan.roads()) {
+      float travelled = 0;
+      for (int i = 1; i < road.points().size(); i++) {
+        var a = road.points().get(i - 1);
+        var b = road.points().get(i);
+        float dx = b.x() - a.x(), dz = b.z() - a.z(), length = (float) Math.hypot(dx, dz);
+        mesh.transform(
+            (a.x() + b.x()) / 2, (a.z() + b.z()) / 2, (float) Math.toDegrees(Math.atan2(dz, dx)));
+        // Slight overlap at bends closes joins; asphalt is above the sidewalk foundation.
+        fixed(0, -1.5f, 0, length + .8f, .7f, road.width() + 5, 0, PAVEMENT);
+        fixed(0, -.75f, 0, length + .9f, .15f, road.width(), 0, ASPHALT);
+        if (road.avenue()) {
+          for (float dash = 8 - (travelled % 18); dash < length; dash += 18)
+            if (dash >= 0)
+              fixed(
+                  dash - length / 2, -.58f, 0, Math.min(6, length - dash), .04f, .45f, 0, MARKING);
+        }
+        if (i == 1 && !road.avenue()) {
+          for (float stripe = -road.width() / 2 + 1; stripe < road.width() / 2 - 1; stripe += 3)
+            fixed(length * .15f, -.57f, stripe, 4, .04f, 1.4f, 0, ROOF);
+        }
+        if (road.avenue() && i % 7 == 3) {
+          float curb = road.width() / 2 - 2.3f;
+          fixed(0, -.57f, curb, 4.8f, 1.8f, 2, 0, MARKING);
+          fixed(0, 1.23f, curb, 2.5f, .8f, 1.7f, 0, ASPHALT);
+        }
+        travelled += length;
+      }
+    }
+    mesh.transform(0, 0, 0);
   }
 
   private void fixed(float x, float y, float z, float w, float h, float d, int layer, Color color) {
@@ -352,12 +362,19 @@ public final class CityRenderer implements AutoCloseable {
     cameraReady = true;
     for (var b : buildings.values()) {
       b.height = MathUtils.lerp(b.from, b.goal, progress);
-      float y = b.cell.layer() * spacing * explode, w = b.cell.width();
-      b.bounds.min.set(b.cell.x() - w / 2, y, b.cell.z() - w / 2);
-      b.bounds.max.set(b.cell.x() + w / 2, y + b.height + 10, b.cell.z() + w / 2);
+      float y = b.cell.layer() * spacing * explode;
+      float radians = b.cell.angle() * MathUtils.degreesToRadians;
+      float c = Math.abs(MathUtils.cos(radians)), s = Math.abs(MathUtils.sin(radians));
+      float w = b.cell.width() * c + b.cell.depth() * s,
+          d = b.cell.width() * s + b.cell.depth() * c;
+      b.bounds.min.set(b.cell.x() - w / 2, y, b.cell.z() - d / 2);
+      b.bounds.max.set(b.cell.x() + w / 2, y + b.height + 12, b.cell.z() + d / 2);
       b.bounds.update();
+      b.localBounds.min.set(-b.cell.width() / 2, y, -b.cell.depth() / 2);
+      b.localBounds.max.set(b.cell.width() / 2, y + b.height + 12, b.cell.depth() / 2);
+      b.localBounds.update();
       if (Math.abs(camera.position.x - b.cell.x()) < w / 2 + 5
-          && Math.abs(camera.position.z - b.cell.z()) < w / 2 + 5)
+          && Math.abs(camera.position.z - b.cell.z()) < d / 2 + 5)
         camera.position.y = Math.max(camera.position.y, y + b.height + 15);
     }
     camera.viewportWidth = width;
@@ -383,7 +400,9 @@ public final class CityRenderer implements AutoCloseable {
     Vector3 hit = new Vector3();
     for (var b : buildings.values())
       if (!b.retiring && Intersector.intersectRayBounds(ray, b.bounds, hit)) {
-        float d = hit.dst2(camera.position);
+        Ray localRay = ray.cpy().mul(b.inverse);
+        if (!Intersector.intersectRayBounds(localRay, b.localBounds, hit)) continue;
+        float d = hit.dst2(localRay.origin);
         if (d < nearest) {
           nearest = d;
           found = b.file.path();
