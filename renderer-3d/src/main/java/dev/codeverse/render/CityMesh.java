@@ -62,7 +62,7 @@ final class CityMesh implements AutoCloseable {
           void main() {
             vec3 p = a_position;
             p.y = mix(a_motion.x, p.y, u_progress) + a_motion.y * u_lift;
-            float light = 0.52 + 0.48 * max(dot(normalize(mat3(u_model) * a_normal), normalize(vec3(-0.4, 0.85, 0.3))), 0.0);
+            float light = 0.52 + 0.48 * max(dot(normalize((u_model * vec4(a_normal, 0.0)).xyz), normalize(vec3(-0.4, 0.85, 0.3))), 0.0);
             vec3 color = a_color.rgb;
             if (a_motion.z >= 0.0 && abs(a_motion.z - u_selected) < 0.1) color = vec3(0.35, 0.96, 0.95);
             v_color = vec4(color * light, 1.0);

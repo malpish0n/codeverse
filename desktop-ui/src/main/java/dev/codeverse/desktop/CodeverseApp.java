@@ -204,7 +204,7 @@ public final class CodeverseApp extends ApplicationAdapter {
                   return true;
                 }
                 if (key == Input.Keys.E) {
-                  city.exploded = !city.exploded;
+                  toggleExplode();
                   return true;
                 }
                 if (key == Input.Keys.R) {
@@ -511,7 +511,7 @@ public final class CodeverseApp extends ApplicationAdapter {
     inspect.add(label("SCENE CONTROLS", MUTED)).left().padBottom(12).row();
     Table modes = new Table();
     modes.add(button("Drone / T", () -> city.tour = !city.tour)).width(124).height(32).padRight(6);
-    modes.add(button("Explode / E", () -> city.exploded = !city.exploded)).width(124).height(32);
+    modes.add(button("Explode / E", this::toggleExplode)).width(124).height(32);
     inspect.add(modes).row();
     CheckBox life = new CheckBox("  Living city / traffic & lights", skin);
     life.setChecked(true);
@@ -1495,7 +1495,7 @@ public final class CodeverseApp extends ApplicationAdapter {
                       case "Go to file" -> stage.setKeyboardFocus(search);
                       case "Branch A/B" -> branches();
                       case "Drone View" -> city.tour = !city.tour;
-                      case "Explode" -> city.exploded = !city.exploded;
+                      case "Explode" -> toggleExplode();
                       case "Reset camera" -> city.reset();
                       case "Focus hotspot" ->
                           hotspots.entrySet().stream()
@@ -1575,6 +1575,12 @@ public final class CodeverseApp extends ApplicationAdapter {
         && x < Gdx.graphics.getWidth() - 300
         && y > 80
         && y < Gdx.graphics.getHeight() - 122;
+  }
+
+  private void toggleExplode() {
+    guided = false;
+    city.tour = false;
+    city.exploded = !city.exploded;
   }
 
   private void manualZoom(float amount) {

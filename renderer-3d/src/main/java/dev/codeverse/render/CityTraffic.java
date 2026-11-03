@@ -39,12 +39,15 @@ final class CityTraffic implements AutoCloseable {
   void plan(Plan plan) {
     cars.clear();
     // Round-robin road sampling distributes a bounded traffic budget over the whole city.
-    List<TrafficRoute> routes =
+    List<TrafficRoute> allRoutes =
         plan.roads().stream()
             .filter(r -> r.points().size() > 1)
             .map(TrafficRoute::new)
             .filter(r -> r.length > 30)
             .toList();
+    List<TrafficRoute> routes = new ArrayList<>();
+    int budget = Math.min(120, allRoutes.size());
+    for (int i = 0; i < budget; i++) routes.add(allRoutes.get(i * allRoutes.size() / budget));
     for (int pass = 0; pass < 5 && cars.size() < 240; pass++)
       for (int i = 0; i < routes.size() && cars.size() < 240; i++) {
         var route = routes.get(i);

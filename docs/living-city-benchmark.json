@@ -1,0 +1,1 @@
+{"inputFiles":10000,"renderNodes":10000,"warmupFrames":180,"measuredFrames":179,"frameMsP50":2.543958,"frameMsP95":5.785166,"animatedFrameMsP95":4.448541,"animatedMeasuredFrames":359,"heapUsedBytes":58147968,"gpu":"Apple M1 Pro"}
