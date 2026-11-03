@@ -140,48 +140,67 @@ public final class CodeverseApp extends ApplicationAdapter {
     buildUI();
     Gdx.input.setInputProcessor(
         new InputMultiplexer(
+            new InputAdapter() {
+              public boolean scrolled(float x, float y) {
+                if (!overScene(Gdx.input.getX(), Gdx.input.getY())) return false;
+                manualZoom(y != 0 ? y : x);
+                return true;
+              }
+            },
             stage,
             new InputAdapter() {
-              int lx, ly;
-              boolean dragging;
+              int lx, ly, startX, startY, dragButton;
+              boolean dragging, captured;
 
               public boolean touchDown(int x, int y, int pointer, int button) {
-                lx = x;
-                ly = y;
+                if (pointer != 0 || !overScene(x, y)) return false;
+                captured = true;
                 dragging = false;
-                return x > 264
-                    && x < Gdx.graphics.getWidth() - 300
-                    && y > 80
-                    && y < Gdx.graphics.getHeight() - 122;
+                lx = startX = x;
+                ly = startY = y;
+                dragButton = button;
+                stage.setKeyboardFocus(null);
+                stage.setScrollFocus(null);
+                guided = false;
+                city.tour = false;
+                return true;
               }
 
               public boolean touchDragged(int x, int y, int pointer) {
-                if (x > 264 && x < Gdx.graphics.getWidth() - 300) {
-                  city.orbit(x - lx, y - ly);
-                  dragging = true;
-                  lx = x;
-                  ly = y;
-                }
+                if (!captured || pointer != 0) return false;
+                if (!dragging && Math.hypot(x - startX, y - startY) < 4) return true;
+                dragging = true;
+                if (dragButton == Input.Buttons.RIGHT
+                    || dragButton == Input.Buttons.MIDDLE
+                    || Gdx.input.isKeyPressed(Input.Keys.SHIFT_LEFT)
+                    || Gdx.input.isKeyPressed(Input.Keys.SHIFT_RIGHT)) city.pan(x - lx, y - ly);
+                else city.orbit(x - lx, y - ly);
+                lx = x;
+                ly = y;
                 return true;
               }
 
               public boolean touchUp(int x, int y, int pointer, int button) {
-                if (!dragging
-                    && x > 264
-                    && x < Gdx.graphics.getWidth() - 300
-                    && y > 80
-                    && y < Gdx.graphics.getHeight() - 122) select(pick(x, y));
-                return true;
-              }
-
-              public boolean scrolled(float x, float y) {
-                city.zoom(y);
+                if (!captured || pointer != 0) return false;
+                captured = false;
+                if (!dragging && button == Input.Buttons.LEFT && overScene(x, y))
+                  select(pick(x, y));
                 return true;
               }
 
               public boolean keyDown(int key) {
                 if (key == Input.Keys.ESCAPE) {
                   stage.setKeyboardFocus(null);
+                  return true;
+                }
+                if (key == Input.Keys.EQUALS
+                    || key == Input.Keys.PLUS
+                    || key == Input.Keys.NUMPAD_ADD) {
+                  manualZoom(-1.5f);
+                  return true;
+                }
+                if (key == Input.Keys.MINUS || key == Input.Keys.NUMPAD_SUBTRACT) {
+                  manualZoom(1.5f);
                   return true;
                 }
                 if (key == Input.Keys.E) {
@@ -396,6 +415,8 @@ public final class CodeverseApp extends ApplicationAdapter {
     top.add(logo).left().width(245);
     repoLabel = label("THE LIVING HISTORY OF CODE", MUTED);
     top.add(repoLabel).expandX().left();
+    top.add(button("Zoom +", () -> manualZoom(-1.5f))).width(70).height(36).padRight(6);
+    top.add(button("Zoom -", () -> manualZoom(1.5f))).width(70).height(36).padRight(10);
     top.add(button("Open repository", this::openDialog)).height(36).width(155).padRight(10);
     top.add(button("Demo", this::demo)).height(36).width(65).padRight(8);
     top.add(
@@ -443,8 +464,8 @@ public final class CodeverseApp extends ApplicationAdapter {
         label(
             "Select a building\n"
                 + "to inspect its source metrics.\n\n"
-                + "Drag: orbit\n"
-                + "Scroll: zoom\n"
+                + "Drag: orbit / Shift+drag: pan\n"
+                + "Two-finger scroll / +/-: zoom\n"
                 + "W A S D: fly\n"
                 + "Shift: boost\n"
                 + "F: focus   R: reset\n"
@@ -937,7 +958,7 @@ public final class CodeverseApp extends ApplicationAdapter {
       inspector.setText(
           "Select a building\n"
               + "to inspect its source metrics.\n\n"
-              + "Drag: orbit  /  scroll: zoom\n"
+              + "Drag: orbit / Shift+drag: pan\nTwo-finger scroll / +/-: zoom\n"
               + "WASD: fly  /  Shift: boost\n"
               + "F: focus  /  R: reset\n"
               + "E: explode  /  T: drone");
@@ -1541,6 +1562,20 @@ public final class CodeverseApp extends ApplicationAdapter {
     } catch (Exception e) {
       status.setText("Export failed: " + e.getMessage());
     }
+  }
+
+  private boolean overScene(int x, int y) {
+    for (Actor actor : stage.getActors())
+      if (actor instanceof Dialog && actor.isVisible()) return false;
+    return x > 264
+        && x < Gdx.graphics.getWidth() - 300
+        && y > 80
+        && y < Gdx.graphics.getHeight() - 122;
+  }
+
+  private void manualZoom(float amount) {
+    guided = false;
+    city.zoom(amount);
   }
 
   private void savePrefs() {

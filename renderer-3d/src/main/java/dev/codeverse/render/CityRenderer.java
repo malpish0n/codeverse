@@ -343,12 +343,24 @@ public final class CityRenderer implements AutoCloseable {
 
   public void orbit(float dx, float dy) {
     tour = false;
-    yaw -= dx * .3f;
-    pitch = MathUtils.clamp(pitch + dy * .25f, 12, 85);
+    yaw = Motion.orbitYaw(yaw, dx);
+    pitch = Motion.orbitPitch(pitch, dy);
   }
 
   public void zoom(float amount) {
-    distance = MathUtils.clamp(distance * (1 + amount * .09f), 65, 25000);
+    tour = false;
+    distance = Motion.zoomDistance(distance, amount);
+  }
+
+  public void pan(float dx, float dy) {
+    tour = false;
+    float scale =
+        2
+            * distance
+            * MathUtils.tan(camera.fieldOfView * MathUtils.degreesToRadians / 2)
+            / Math.max(1, camera.viewportHeight);
+    rightVector.set(camera.direction).crs(camera.up).nor();
+    target.mulAdd(rightVector, -dx * scale).mulAdd(camera.up, dy * scale);
   }
 
   public void move(float forward, float right, float dt, boolean boost) {
