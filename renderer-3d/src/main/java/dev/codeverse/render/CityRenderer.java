@@ -236,7 +236,14 @@ public final class CityRenderer implements AutoCloseable {
         windows);
   }
 
+  private static long parcelKey(float x, float z) {
+    return ((long) Float.floatToIntBits(x) << 32) ^ (Float.floatToIntBits(z) & 0xffffffffL);
+  }
+
   private void drawPlan() {
+    Set<Long> occupied = new HashSet<>();
+    for (var building : buildings.values())
+      if (!building.retiring) occupied.add(parcelKey(building.cell.x(), building.cell.z()));
     mesh.transform(0, 0, 0);
     mesh.building(-1);
     for (var block : plan.blocks()) {
@@ -264,6 +271,42 @@ public final class CityRenderer implements AutoCloseable {
                   ? Color.valueOf("6B945D")
                   : Color.valueOf("9A9F97"));
         }
+        for (var lot : block.lots())
+          if (!occupied.contains(parcelKey(lot.x(), lot.z()))) {
+            mesh.transform(lot.x(), lot.z(), lot.angle());
+            if (block.district() == District.EVERYDAY || block.district() == District.SKYLINE) {
+              fixed(0, -1.05f, 0, lot.width(), .12f, lot.depth(), 0, ASPHALT);
+              for (float slot : new float[] {-.30f, 0, .30f}) {
+                float x = lot.width() * slot;
+                fixed(
+                    x,
+                    -.90f,
+                    0,
+                    Math.min(3, lot.width() * .2f),
+                    1.4f,
+                    Math.min(7, lot.depth() * .65f),
+                    0,
+                    ROOF);
+                fixed(
+                    x,
+                    .5f,
+                    0,
+                    Math.min(2.6f, lot.width() * .17f),
+                    .9f,
+                    Math.min(3.4f, lot.depth() * .3f),
+                    0,
+                    ASPHALT);
+                fixed(x + lot.width() * .13f, -.91f, 0, .12f, .03f, lot.depth() * .85f, 0, MARKING);
+              }
+            } else {
+              for (float x : new float[] {-lot.width() * .25f, lot.width() * .25f})
+                for (float z : new float[] {-lot.depth() * .25f, lot.depth() * .25f}) {
+                  fixed(x, -1, z, .7f, 4, .7f, 0, TRUNK);
+                  fixed(x, 2, z, 4.2f, 4, 4.2f, 0, GREEN);
+                  fixed(x, 5.7f, z, 2.8f, 2, 2.8f, 0, GREEN);
+                }
+            }
+          }
         for (var path : UrbanInfill.paths(block)) {
           float dx = path.end().x() - path.start().x(), dz = path.end().z() - path.start().z();
           mesh.transform(
