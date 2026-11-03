@@ -43,7 +43,7 @@ public final class RenderBenchmark extends ApplicationAdapter {
               sample(i)));
     var snap = Aggregation.forRendering(new Snapshot("benchmark", files));
     var layout = new StableLayout();
-    var cells = layout.reserve(snap.files().stream().map(FileRevision::path).toList());
+    var cells = layout.reserveFiles(snap.files());
     city.setPlan(layout.plan());
     city.setScene(snap, cells, List.of(), Map.of(), true);
     last = System.nanoTime();

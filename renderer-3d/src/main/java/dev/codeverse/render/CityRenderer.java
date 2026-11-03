@@ -14,6 +14,7 @@ public final class CityRenderer implements AutoCloseable {
   private final CityMesh mesh = new CityMesh();
   private final CityTraffic traffic = new CityTraffic();
   private double lifeTime;
+  private final Map<Integer, District> blockDistricts = new HashMap<>();
   public boolean living = true;
   private CityGenerator.Plan plan = CityGenerator.Plan.empty();
 
@@ -21,6 +22,8 @@ public final class CityRenderer implements AutoCloseable {
     if (this.plan != plan) {
       this.plan = plan;
       traffic.plan(plan);
+      blockDistricts.clear();
+      for (var block : plan.blocks()) blockDistricts.put(block.id(), block.district());
       dirty = true;
     }
   }
@@ -55,6 +58,7 @@ public final class CityRenderer implements AutoCloseable {
 
   public static final class Building {
     public FileRevision file;
+    public District district = District.EVERYDAY;
     public dev.codeverse.model.BuildingProfile profile;
     public Cell cell;
     public float height, goal, from;
@@ -102,7 +106,8 @@ public final class CityRenderer implements AutoCloseable {
           .setToTranslation(b.cell.x(), 0, b.cell.z())
           .rotate(Vector3.Y, -b.cell.angle())
           .inv();
-      b.goal = Data.height(f.loc());
+      b.district = blockDistricts.getOrDefault(b.cell.block(), District.forProfile(b.profile));
+      b.goal = Data.height(f.loc()) * b.district.heightScale;
       b.change = diff.getOrDefault(f.path(), "");
       b.hotspot = hotspots.getOrDefault(f.path(), new Hotspot(0, 0, 0, 0)).score();
     }
@@ -235,7 +240,33 @@ public final class CityRenderer implements AutoCloseable {
     mesh.transform(0, 0, 0);
     mesh.building(-1);
     for (var block : plan.blocks()) {
-      mesh.surface(block.outline(), -1.4f, 0, Color.valueOf("334548"));
+      Color ground =
+          Color.valueOf(
+              switch (block.district()) {
+                case HOMES -> "657A58";
+                case EVERYDAY -> "6E706A";
+                case GARDENS -> "788969";
+                case SKYLINE -> "7D8D92";
+              });
+      mesh.surface(block.outline(), -1.4f, 0, ground);
+      if (!block.park()) {
+        for (var lot : block.lots()) {
+          mesh.transform(lot.x(), lot.z(), lot.angle());
+          fixed(
+              0,
+              -1.15f,
+              0,
+              lot.width() + 6,
+              .12f,
+              lot.depth() + 6,
+              0,
+              block.district() == District.HOMES || block.district() == District.GARDENS
+                  ? Color.valueOf("6B945D")
+                  : Color.valueOf("9A9F97"));
+        }
+        for (var feature : UrbanInfill.forBlock(block)) drawInfill(feature, block.district());
+        mesh.transform(0, 0, 0);
+      }
       if (block.park()) {
         float cx = 0, cz = 0;
         for (var p : block.outline()) {
@@ -312,6 +343,53 @@ public final class CityRenderer implements AutoCloseable {
     mesh.transform(0, 0, 0);
   }
 
+  private void drawInfill(UrbanInfill.Feature f, District district) {
+    mesh.transform(f.x(), f.z(), f.angle());
+    switch (f.kind()) {
+      case TREE -> {
+        fixed(0, -1.1f, 0, 6.5f, .25f, 6.5f, 0, Color.valueOf("63835B"));
+        fixed(0, -.85f, 0, .8f, 4.5f, .8f, 0, TRUNK);
+        fixed(0, 2.5f, 0, 4.8f, 4.5f, 4.8f, 0, GREEN);
+        fixed(0, 6, 0, 3, 2, 3, 0, Color.valueOf("72965A"));
+      }
+      case PLANTER -> {
+        fixed(0, -1.1f, 0, 5.8f, .8f, 4, 0, ROOF);
+        fixed(0, -.3f, 0, 5, .8f, 3.2f, 0, GREEN);
+        for (float x : new float[] {-1.5f, 0, 1.5f})
+          fixed(x, .5f, 0, .8f, .5f, .8f, 0, Color.valueOf("D8B985"));
+      }
+      case BENCH -> {
+        fixed(0, -1.1f, 0, 6, .12f, 5, 0, Color.valueOf("B5AE9B"));
+        fixed(0, -.8f, 0, .5f, 1, 1.6f, 0, ROOF);
+        fixed(0, .2f, 0, 5, .5f, 1.8f, 0, TRUNK);
+        fixed(0, .7f, .7f, 5, 1.3f, .35f, 0, TRUNK);
+      }
+      case PARKING -> {
+        fixed(0, -1.15f, 0, 8, .2f, 5.8f, 0, ASPHALT);
+        for (float z : new float[] {-2.6f, 2.6f}) fixed(0, -.94f, z, 7, .03f, .12f, 0, ROOF);
+        fixed(0, -.9f, 0, 6.5f, 1.4f, 3, 0, Color.valueOf("B0BFC2"));
+        fixed(-.3f, .5f, 0, 3, 1, 2.6f, 0, Color.valueOf("456475"));
+      }
+    }
+  }
+
+  public void focusDistrict(District district) {
+    BoundingBox bounds = new BoundingBox();
+    boolean found = false;
+    for (var block : plan.blocks())
+      if (block.district() == district) {
+        for (var p : block.outline()) bounds.ext(p.x(), 0, p.z());
+        found = true;
+      }
+    if (!found) return;
+    tour = false;
+    bounds.getCenter(target);
+    Vector3 size = new Vector3();
+    bounds.getDimensions(size);
+    distance = Math.max(220, Math.max(size.x, size.z) * 1.05f);
+    pitch = 48;
+  }
+
   private void parkPath(float ax, float az, float bx, float bz) {
     float length = (float) Math.hypot(bx - ax, bz - az);
     mesh.transform(
@@ -325,7 +403,7 @@ public final class CityRenderer implements AutoCloseable {
   }
 
   private Color color(Building b, int seed) {
-    Color c = FACADES[seed % FACADES.length].cpy();
+    Color c = Color.valueOf(b.district.color).lerp(FACADES[seed % FACADES.length], .32f);
     if (b.change.equals("ADD")) c.set(Color.valueOf("59C8BE"));
     else if (b.change.equals("DELETE")) c.set(Color.valueOf("EC7885"));
     else if (!b.change.isEmpty()) c.set(Color.valueOf("A99BE3"));

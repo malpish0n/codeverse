@@ -29,7 +29,12 @@ public final class CityGenerator {
   public record Lot(float x, float z, float width, float depth, float angle, int block) {}
 
   public record Block(
-      int id, List<Point> outline, List<Lot> lots, List<Point> trees, boolean park) {}
+      int id,
+      List<Point> outline,
+      List<Lot> lots,
+      List<Point> trees,
+      boolean park,
+      District district) {}
 
   public record Region(List<Block> blocks, List<Road> roads) {}
 
@@ -44,18 +49,34 @@ public final class CityGenerator {
   private final List<Road> roads = new ArrayList<>();
   private SplittableRandom random;
   private int blockId;
+  private District district = District.EVERYDAY;
 
   public CityGenerator(Settings settings) {
     this.settings = settings;
   }
 
   public Region region(int index) {
+    district = District.EVERYDAY;
+    int[] tile = spiral(index);
+    return generate(index, tile[0], tile[1]);
+  }
+
+  public Region districtRegion(int index, District district) {
+    this.district = district;
+    int row = (int) ((Math.sqrt(8.0 * index + 1) - 1) / 2);
+    int column = index - row * (row + 1) / 2;
+    int x = column, z = row - column;
+    if (district == District.HOMES || district == District.GARDENS) x = -x - 1;
+    if (district == District.GARDENS || district == District.SKYLINE) z = -z - 1;
+    return generate(index * 4 + district.ordinal(), x, z);
+  }
+
+  private Region generate(int index, int tileX, int tileZ) {
     blocks.clear();
     roads.clear();
     blockId = index * 1024;
     random = new SplittableRandom(settings.seed() ^ mix(index + 1));
-    int[] tile = spiral(index);
-    float x = tile[0] * 640, z = tile[1] * 520;
+    float x = tileX * 640, z = tileZ * 520;
     // Borders share the same world-space deformation, so adjoining regions meet exactly.
     road(x, z, x + 640, z, 22, true);
     road(x + 640, z, x + 640, z + 520, 22, true);
@@ -102,9 +123,10 @@ public final class CityGenerator {
         List.of(point(x, z), point(x, z + d), point(x + w, z + d), point(x + w, z));
     List<Lot> lots = new ArrayList<>();
     List<Point> trees = new ArrayList<>();
-    float margin = 23, insideW = w - 2 * margin, insideD = d - 2 * margin;
+    float margin = 20, insideW = w - 2 * margin, insideD = d - 2 * margin;
     float step =
         settings.style() == Style.DOWNTOWN ? 27 : settings.style() == Style.GARDEN ? 39 : 33;
+    step *= district == District.GARDENS ? 1f : .85f;
     int cols = Math.max(1, (int) (insideW / step)), rows = Math.max(1, (int) (insideD / step));
     float dx = insideW / cols, dz = insideD / rows;
     for (int row = 0; row < rows; row++)
@@ -143,7 +165,7 @@ public final class CityGenerator {
                   tz + (float) greenery.nextDouble(-2, 2)));
         }
     }
-    blocks.add(new Block(id, outline, List.copyOf(lots), List.copyOf(trees), park));
+    blocks.add(new Block(id, outline, List.copyOf(lots), List.copyOf(trees), park, district));
   }
 
   private void road(float x, float z, float toX, float toZ, float width, boolean avenue) {

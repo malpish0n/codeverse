@@ -439,6 +439,19 @@ public final class CodeverseApp extends ApplicationAdapter {
         new String[] {"Overview", "Branches", "Timeline", "Dependencies", "Hotspots", "Bookmarks"})
       side.add(button(view, () -> view(view))).growX().height(35).padBottom(5).row();
     side.add(button("City generator", this::generatorDialog)).growX().height(35).padBottom(5).row();
+    Table zones = new Table();
+    for (District district : District.values()) {
+      TextButton zone =
+          button(
+              district.label,
+              () -> {
+                guided = false;
+                city.focusDistrict(district);
+              });
+      zone.getLabel().setColor(Color.valueOf(district.color));
+      zones.add(zone).growX().height(25).padBottom(2).row();
+    }
+    side.add(zones).growX().padTop(6).row();
     side.add(label("EXPLORE FILES", MUTED)).left().padTop(20).padBottom(12).row();
     search = new TextField("", skin);
     search.setMessageText("Search path / language");
@@ -872,7 +885,7 @@ public final class CodeverseApp extends ApplicationAdapter {
   private void display(boolean reset) {
     edges = Dependencies.analyze(snapshot);
     Snapshot visual = Aggregation.forRendering(snapshot);
-    layout.reserve(visual.files().stream().map(FileRevision::path).toList());
+    layout.reserveFiles(visual.files());
     city.setPlan(layout.plan());
     city.setScene(visual, layout.cells(), changes, hotspots, reset);
     if (follow && selected != null) city.focus(selected);
@@ -983,6 +996,12 @@ public final class CodeverseApp extends ApplicationAdapter {
             + f.bytes()
             + " bytes\n\nHEIGHT\nclamp(8 + 16 × log2(1+LOC),\n8, 120) = "
             + Math.round(Data.height(f.loc()))
+            + "\nDistrict height multiplier: "
+            + (b == null ? 1 : b.district.heightScale)
+            + "\nRendered height: "
+            + (b == null ? Math.round(Data.height(f.loc())) : Math.round(b.goal))
+            + "\n\nDISTRICT\n"
+            + (b == null ? "Unassigned" : b.district.label)
             + "\n\nBUILDING MODEL\n"
             + profile.model().label
             + "\nRichness: "
@@ -1136,8 +1155,8 @@ public final class CodeverseApp extends ApplicationAdapter {
           Set<String> deleted = new HashSet<>();
           for (var x : changes) if (x.type().equals("DELETE")) deleted.add(x.oldPath());
           for (var f : v.a.files()) if (deleted.contains(f.path())) union.putIfAbsent(f.path(), f);
-          layout.reserve(v.a.files().stream().map(FileRevision::path).toList());
-          layout.reserve(v.b.files().stream().map(FileRevision::path).toList());
+          layout.reserveFiles(v.a.files());
+          layout.reserveFiles(v.b.files());
           snapshot = new Snapshot(v.b.sha(), java.util.List.copyOf(union.values()));
           display(false);
           if (splitView) {
@@ -1397,7 +1416,13 @@ public final class CodeverseApp extends ApplicationAdapter {
                         }
                       },
                       v -> {
-                        if (b.layout != null) layout.restore(b.layout);
+                        if (b.layout != null && b.layout.version() == StableLayout.VERSION)
+                          layout.restore(b.layout);
+                        else if (b.layout != null)
+                          layout.configure(
+                              b.layout.settings() == null
+                                  ? CityGenerator.Settings.defaults()
+                                  : b.layout.settings());
                         else layout.clear();
                         snapshot = v.snapshot;
                         history = v.history;

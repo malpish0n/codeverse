@@ -46,22 +46,31 @@ final class CityTraffic implements AutoCloseable {
             .filter(r -> r.length > 30)
             .toList();
     List<TrafficRoute> routes = new ArrayList<>();
-    int budget = Math.min(120, allRoutes.size());
+    int budget = Math.min(240, allRoutes.size());
     for (int i = 0; i < budget; i++) routes.add(allRoutes.get(i * allRoutes.size() / budget));
-    for (int pass = 0; pass < 5 && cars.size() < 240; pass++)
-      for (int i = 0; i < routes.size() && cars.size() < 240; i++) {
+    int[] counts = new int[routes.size()];
+    int total = 0;
+    for (int pass = 0; pass < 18 && total < 1200; pass++)
+      for (int i = 0; i < routes.size() && total < 1200; i++) {
+        int wanted = Math.min(18, Math.max(2, (int) (routes.get(i).length / 38)));
+        if (pass < wanted) {
+          counts[i]++;
+          total++;
+        }
+      }
+    for (int i = 0; i < routes.size(); i++)
+      for (int car = 0; car < counts[i]; car++) {
         var route = routes.get(i);
-        int count = Math.min(5, Math.max(1, (int) (route.length / 100)));
-        if (pass < count)
-          cars.add(
-              new Car(
-                  route, route.length * (pass + .37f) / count, colors[(i + pass) % colors.length]));
+        cars.add(
+            new Car(
+                route, route.length * (car + .37f) / counts[i], colors[(i + car) % colors.length]));
       }
   }
 
   void render(Camera camera, double time) {
     for (var car : cars) {
       var p = car.route.at(car.offset + time * car.route.speed);
+      if (!camera.frustum.sphereInFrustum(p.x(), 2, p.z(), car.route.carWidth * 2)) continue;
       transform
           .setToTranslation(p.x(), -.52f, p.z())
           .rotate(Vector3.Y, -p.angle())
