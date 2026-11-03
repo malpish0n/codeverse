@@ -5,13 +5,13 @@
     "renderNodes": 10000,
     "warmupFrames": 180,
     "measuredFrames": 179,
-    "frameMsP50": 0.847792,
-    "frameMsP95": 4.294042,
-    "animatedFrameMsP95": 3.694875,
+    "frameMsP50": 1.499542,
+    "frameMsP95": 5.789125,
+    "animatedFrameMsP95": 5.256708,
     "animatedMeasuredFrames": 359,
-    "heapUsedBytes": 76040696,
+    "heapUsedBytes": 30570848,
     "gpu": "Apple M1 Pro",
-    "note": "Urban geometry, GPU height/explode interpolation; 359 measured animated frames, deterministic 60 Hz simulation, VSync disabled. Interactive demo separately observed at 60 FPS."
+    "note": "Seeded organic city with roads, parks and rotated parcels; deterministic 60 Hz animation simulation; VSync disabled; static and drone/explode phases measured separately."
   },
   "indexer": {
     "files": 10000,

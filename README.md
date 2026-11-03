@@ -6,7 +6,7 @@
 
 ## Run
 
-Open the self-contained `CODEVERSE.app` on macOS. No Java installation is needed for packaged applications. The first launch opens an app-owned demo with 288 Java files, 12 mainline commits and a feature branch. Click **Guided tour** for a repeatable tour, or **Open repository** to choose your own folder. Dropping a repository folder on the window also works.
+Open the self-contained `CODEVERSE.app` on macOS. No Java installation is needed for packaged applications. The first launch opens an app-owned demo with 1,032 Java files, 24 mainline commits and a feature branch. Click **Guided tour** for a repeatable tour, or **Open repository** to choose your own folder. Dropping a repository folder on the window also works.
 
 To build from source, install JDK 25:
 
@@ -17,6 +17,9 @@ To build from source, install JDK 25:
 Windows: `gradlew.bat test :desktop-ui:run`. The first build downloads dependencies; the installed application works offline. `./gradlew :desktop-ui:installDist` produces launch scripts and all libraries. `python3 scripts/package.py --type app-image` bundles a runtime using `JAVA_HOME` (Temurin recommended). Native DMG/DEB installers are built by CI; Windows has a self-contained app image. Local macOS previews are ad-hoc signed, not Apple-notarized.
 
 ## Explore
+
+- **City generator** builds connected curved avenues, irregular blocks and parks. Choose Organic, Downtown or Garden, set a seed and a scale from 0.8× to 2.5×, then Generate city. New seed creates a different repeatable layout. Buildings still represent real committed files; the generator never modifies a repository.
+- Existing parcels remain fixed during history playback. Settings persist locally; saved viewpoints include the generator version, seed and allocation order. Older grid bookmarks migrate to the current generator.
 
 - Buildings represent committed files; height is `clamp(8 + 16 × log2(1 + LOC), 8, 120)`. Folders are grouped into reserved parcels.
 - Click a building or fuzzy-search a path to inspect LOC, source, history and change frequency.
@@ -52,9 +55,9 @@ Cache, settings and demo data live in the platform application-data folder (`~/L
 
 Six Gradle modules: `desktop-ui`, `renderer-3d`, `scene-model`, `git-indexer`, `code-analyzer`, `storage`. Java 25, libGDX 1.14.2, JGit 7.8.0, LWJGL 3.4.3 and SQLite. Versions and dependency lockfiles are committed. Import parsing is bounded and heuristic; repository work runs on a cancellable worker. Urban geometry uses static mesh batches; height changes and district separation run on the GPU. Camera position and look target use frame-rate-independent damping. Selection uses a shader uniform without rebuilding the city. The interface bundles Roboto.
 
-Tests cover merge-base vs tip-to-tip, rename/add/delete/modify, native `git diff` agreement, bare/empty/detached repositories, cancellation, Unicode, binary/large/LFS/symlink entries, deterministic layout, persistent layout, 100k aggregation, dependency cycles, cache isolation and camera damping at 30/60/120/144 Hz.
+Tests cover merge-base vs tip-to-tip, rename/add/delete/modify, native `git diff` agreement, bare/empty/detached repositories, cancellation, Unicode, binary/large/LFS/symlink entries, deterministic layout, persistent layout, 100k aggregation, dependency cycles, cache isolation and camera damping at 30/60/120/144 Hz, connected streets, parcel collision checks at all generator scales, street clearance and seeded layout restoration.
 
-[Measured benchmarks](docs/benchmarks.json): on an Apple M1 Pro, the 10,000-building renderer recorded p95 4.29 ms for the steady scene and 3.69 ms during drone/explode animation after warmup without VSync. A 10,000-file fixture took 538 ms to read; 2,000 commits from a 10,000-commit history took 720 ms. The history fixture uses unchanged trees and is not a worst-case churn benchmark. No claim is made about Windows GPU performance or all repositories.
+[Measured benchmarks](docs/benchmarks.json): on an Apple M1 Pro, the 10,000-building renderer recorded p95 5.79 ms for the steady scene and 5.26 ms during drone/explode animation after warmup without VSync. A 10,000-file fixture took 538 ms to read; 2,000 commits from a 10,000-commit history took 720 ms. The history fixture uses unchanged trees and is not a worst-case churn benchmark. No claim is made about Windows GPU performance or all repositories.
 
 ```sh
 ./gradlew :git-indexer:benchmark

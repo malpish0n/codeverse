@@ -32,22 +32,23 @@ class CityGeneratorTest {
 
   @Test
   void parcelFootprintsDoNotOverlapAcrossDistrictsAndRegionBorders() {
-    for (Style style : Style.values()) {
-      var layout = new StableLayout();
-      layout.configure(new Settings(42, style, 1.4f));
-      var cells = layout.reserve(paths(10000)).values();
-      Map<String, List<Cell>> buckets = new HashMap<>();
-      for (Cell cell : cells) {
-        int bx = (int) Math.floor(cell.x() / 100), bz = (int) Math.floor(cell.z() / 100);
-        for (int dx = -1; dx <= 1; dx++)
-          for (int dz = -1; dz <= 1; dz++)
-            for (Cell other : buckets.getOrDefault((bx + dx) + ":" + (bz + dz), List.of()))
-              assertFalse(
-                  overlap(cell, other),
-                  () -> style + ": overlapping parcels " + cell + " / " + other);
-        buckets.computeIfAbsent(bx + ":" + bz, k -> new ArrayList<>()).add(cell);
+    for (Style style : Style.values())
+      for (float scale : new float[] {.8f, 1.4f, 2.5f}) {
+        var layout = new StableLayout();
+        layout.configure(new Settings(42, style, scale));
+        var cells = layout.reserve(paths(3000)).values();
+        Map<String, List<Cell>> buckets = new HashMap<>();
+        for (Cell cell : cells) {
+          int bx = (int) Math.floor(cell.x() / 200), bz = (int) Math.floor(cell.z() / 200);
+          for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++)
+              for (Cell other : buckets.getOrDefault((bx + dx) + ":" + (bz + dz), List.of()))
+                assertFalse(
+                    overlap(cell, other),
+                    () -> style + ": overlapping parcels " + cell + " / " + other);
+          buckets.computeIfAbsent(bx + ":" + bz, k -> new ArrayList<>()).add(cell);
+        }
       }
-    }
   }
 
   private boolean overlap(Cell a, Cell b) {
@@ -104,6 +105,23 @@ class CityGeneratorTest {
       if (visited.add(i)) queue.addAll(connections.get(i));
     }
     assertEquals(roads.size(), visited.size(), "Every generated street must connect to the city");
+  }
+
+  @Test
+  void buildingsLeaveRoomForRoadsAndSidewalks() {
+    var layout = new StableLayout();
+    var cells = layout.reserve(paths(1000)).values();
+    for (Cell cell : cells) {
+      Point center = new Point(cell.x(), cell.z());
+      double radius = Math.hypot(cell.width() + 4, cell.depth() + 4) / 2;
+      for (var road : layout.plan().roads()) {
+        for (int i = 1; i < road.points().size(); i++)
+          assertTrue(
+              distance(center, road.points().get(i - 1), road.points().get(i))
+                  > radius + road.width() / 2,
+              () -> "Building footprint encroaches on a street: " + cell);
+      }
+    }
   }
 
   private double distance(Point p, Point a, Point b) {

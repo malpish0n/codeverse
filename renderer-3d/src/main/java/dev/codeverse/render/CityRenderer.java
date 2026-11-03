@@ -199,7 +199,18 @@ public final class CityRenderer implements AutoCloseable {
     mesh.transform(0, 0, 0);
     mesh.building(-1);
     for (var block : plan.blocks()) {
-      mesh.surface(block.outline(), -.9f, 0, block.park() ? GREEN : Color.valueOf("334548"));
+      mesh.surface(block.outline(), -1.4f, 0, Color.valueOf("334548"));
+      if (block.park()) {
+        float cx = 0, cz = 0;
+        for (var p : block.outline()) {
+          cx += p.x() / 4;
+          cz += p.z() / 4;
+        }
+        List<CityGenerator.Point> inset = new ArrayList<>();
+        for (var p : block.outline())
+          inset.add(new CityGenerator.Point(cx + (p.x() - cx) * .86f, cz + (p.z() - cz) * .86f));
+        mesh.surface(inset, -.9f, 0, GREEN);
+      }
       for (var p : block.trees()) {
         fixed(p.x(), -.8f, p.z(), 1.3f, 7, 1.3f, 0, TRUNK);
         fixed(p.x(), 4, p.z(), 6, 7, 6, 0, GREEN);
@@ -377,6 +388,10 @@ public final class CityRenderer implements AutoCloseable {
           && Math.abs(camera.position.z - b.cell.z()) < d / 2 + 5)
         camera.position.y = Math.max(camera.position.y, y + b.height + 15);
     }
+    // A scale-aware near plane preserves depth precision across the expanded city.
+    float viewingDistance = camera.position.dst(look);
+    camera.near = Math.max(.5f, viewingDistance * .015f);
+    camera.far = Math.max(5000, sceneRadius * 5 + viewingDistance * 3);
     camera.viewportWidth = width;
     camera.viewportHeight = height;
     camera.up.set(Vector3.Y);
