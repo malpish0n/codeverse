@@ -19,6 +19,8 @@ public final class RenderBenchmark extends ApplicationAdapter {
   private final List<Double> times = new ArrayList<>();
   private final List<Double> animatedTimes = new ArrayList<>();
   private long last;
+  private com.badlogic.gdx.math.Vector3 lockedCamera;
+  private float lockedDistance;
 
   public RenderBenchmark(int count, Path output) {
     this.count = count;
@@ -70,6 +72,18 @@ public final class RenderBenchmark extends ApplicationAdapter {
     last = now;
     if (frame > 180 && frame < 360) times.add(ms);
     if (frame > 360) animatedTimes.add(ms);
+    if (frame == 210) {
+      lockedCamera = city.camera.position.cpy();
+      lockedDistance = city.distance;
+      city.exploded = true;
+    }
+    if (frame == 250) city.spacing = 110;
+    if (frame == 300) {
+      if (Math.abs(city.distance - lockedDistance) > .001f
+          || city.camera.position.dst(lockedCamera) > .05f)
+        throw new IllegalStateException("Explode or layer spacing moved the camera");
+      city.exploded = false;
+    }
     if (frame >= 360) {
       city.exploded = (frame / 90) % 2 == 0;
       city.tour = true;

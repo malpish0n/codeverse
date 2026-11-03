@@ -2,6 +2,7 @@ package dev.codeverse.render;
 
 import com.badlogic.gdx.graphics.*;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
+import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.utils.FloatArray;
 import com.badlogic.gdx.utils.ShortArray;
 import java.util.*;
@@ -13,6 +14,7 @@ final class CityMesh implements AutoCloseable {
   private final ShortArray indices = new ShortArray();
   private static final int STRIDE = 12;
   private int buildingId = -1;
+  private static final Matrix4 IDENTITY = new Matrix4();
   private float originX, originZ, cos = 1, sin = 0;
 
   void transform(float x, float z, float degrees) {
@@ -50,20 +52,23 @@ final class CityMesh implements AutoCloseable {
           attribute vec2 a_texCoord0;
           attribute vec3 a_motion;
           uniform mat4 u_projection;
+          uniform mat4 u_model;
           uniform float u_progress;
           uniform float u_lift;
           uniform float u_selected;
           varying vec4 v_color;
           varying vec2 v_uv;
+          varying float v_seed;
           void main() {
             vec3 p = a_position;
             p.y = mix(a_motion.x, p.y, u_progress) + a_motion.y * u_lift;
-            float light = 0.52 + 0.48 * max(dot(a_normal, normalize(vec3(-0.4, 0.85, 0.3))), 0.0);
+            float light = 0.52 + 0.48 * max(dot(normalize(mat3(u_model) * a_normal), normalize(vec3(-0.4, 0.85, 0.3))), 0.0);
             vec3 color = a_color.rgb;
             if (a_motion.z >= 0.0 && abs(a_motion.z - u_selected) < 0.1) color = vec3(0.35, 0.96, 0.95);
             v_color = vec4(color * light, 1.0);
             v_uv = a_texCoord0;
-            gl_Position = u_projection * vec4(p, 1.0);
+            v_seed = a_motion.z * 1.731 + dot(a_normal, vec3(13.0, 3.0, 29.0));
+            gl_Position = u_projection * u_model * vec4(p, 1.0);
           }
           """,
           """
@@ -72,8 +77,12 @@ final class CityMesh implements AutoCloseable {
           #endif
           varying vec4 v_color;
           varying vec2 v_uv;
+          varying float v_seed;
+          uniform float u_time;
+          uniform vec3 u_tint;
+          float random(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
           void main() {
-            vec3 color = v_color.rgb;
+            vec3 color = v_color.rgb * u_tint;
             if (v_uv.x >= 0.0) {
               vec2 tile = fract(v_uv);
               vec2 aa = max(fwidth(v_uv), vec2(0.015));
@@ -82,7 +91,11 @@ final class CityMesh implements AutoCloseable {
                            * smoothstep(0.24-aa.y, 0.24+aa.y, tile.y)
                            * (1.0-smoothstep(0.72-aa.y, 0.72+aa.y, tile.y));
               window *= 1.0-smoothstep(0.35, 1.0, max(aa.x, aa.y));
-              float lit = step(0.72, fract(sin(dot(floor(v_uv), vec2(12.9898, 78.233))) * 43758.5453));
+              vec2 room = floor(v_uv) + vec2(v_seed, v_seed * .37);
+              float cycle = u_time / 18.0 + random(room);
+              float before = step(.62, random(room + floor(cycle) * vec2(7.1, 3.9)));
+              float after = step(.62, random(room + (floor(cycle) + 1.0) * vec2(7.1, 3.9)));
+              float lit = mix(before, after, smoothstep(.85, 1.0, fract(cycle)));
               vec3 glass = mix(vec3(0.10, 0.19, 0.24), vec3(0.83, 0.71, 0.48), lit);
               color = mix(color, glass, window * 0.85);
             }
@@ -237,9 +250,23 @@ final class CityMesh implements AutoCloseable {
     indices.clear();
   }
 
-  void render(Camera camera, float progress, float lift, int selected) {
+  void render(Camera camera, float progress, float lift, int selected, float time) {
+    render(camera, progress, lift, selected, time, IDENTITY, Color.WHITE);
+  }
+
+  void render(
+      Camera camera,
+      float progress,
+      float lift,
+      int selected,
+      float time,
+      Matrix4 model,
+      Color tint) {
     shader.bind();
     shader.setUniformMatrix("u_projection", camera.combined);
+    shader.setUniformMatrix("u_model", model);
+    shader.setUniformf("u_time", time);
+    shader.setUniformf("u_tint", tint.r, tint.g, tint.b);
     shader.setUniformf("u_progress", progress);
     shader.setUniformf("u_lift", lift);
     shader.setUniformf("u_selected", (float) selected);

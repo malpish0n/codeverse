@@ -513,6 +513,10 @@ public final class CodeverseApp extends ApplicationAdapter {
     modes.add(button("Drone / T", () -> city.tour = !city.tour)).width(124).height(32).padRight(6);
     modes.add(button("Explode / E", () -> city.exploded = !city.exploded)).width(124).height(32);
     inspect.add(modes).row();
+    CheckBox life = new CheckBox("  Living city / traffic & lights", skin);
+    life.setChecked(true);
+    on(life, () -> city.living = life.isChecked());
+    inspect.add(life).left().padTop(10).row();
     spacing = new Slider(20, 180, 5, false, skin);
     spacing.setValue(85);
     on(spacing, () -> city.spacing = spacing.getValue());
@@ -1620,6 +1624,7 @@ public final class CodeverseApp extends ApplicationAdapter {
       comparisonCity.pitch = city.pitch;
       comparisonCity.distance = city.distance;
       comparisonCity.target().set(city.target());
+      comparisonCity.living = city.living;
       comparisonCity.exploded = city.exploded;
       comparisonCity.spacing = city.spacing;
       comparisonCity.reducedMotion = city.reducedMotion;

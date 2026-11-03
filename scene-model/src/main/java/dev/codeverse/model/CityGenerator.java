@@ -130,6 +130,19 @@ public final class CityGenerator {
             new Lot(
                 center.x, center.z, width * settings.scale(), depth * settings.scale(), angle, id));
       }
+    if (park) {
+      // Independent decoration RNG leaves existing parcels and subdivision seeds unchanged.
+      trees.clear();
+      var greenery = new SplittableRandom(settings.seed() ^ mix(id + 731));
+      for (float tz = z + 24; tz < z + d - 24; tz += 11)
+        for (float tx = x + 24; tx < x + w - 24; tx += 11) {
+          if (Math.abs(tx - (x + w / 2)) < 6 || Math.abs(tz - (z + d / 2)) < 6) continue;
+          trees.add(
+              point(
+                  tx + (float) greenery.nextDouble(-2, 2),
+                  tz + (float) greenery.nextDouble(-2, 2)));
+        }
+    }
     blocks.add(new Block(id, outline, List.copyOf(lots), List.copyOf(trees), park));
   }
 

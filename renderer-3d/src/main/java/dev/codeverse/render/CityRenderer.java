@@ -12,11 +12,15 @@ import java.util.*;
 public final class CityRenderer implements AutoCloseable {
   public final PerspectiveCamera camera = new PerspectiveCamera(48, 1280, 800);
   private final CityMesh mesh = new CityMesh();
+  private final CityTraffic traffic = new CityTraffic();
+  private double lifeTime;
+  public boolean living = true;
   private CityGenerator.Plan plan = CityGenerator.Plan.empty();
 
   public void setPlan(CityGenerator.Plan plan) {
     if (this.plan != plan) {
       this.plan = plan;
+      traffic.plan(plan);
       dirty = true;
     }
   }
@@ -26,8 +30,8 @@ public final class CityRenderer implements AutoCloseable {
   private final Vector3 position = new Vector3(),
       forwardVector = new Vector3(),
       rightVector = new Vector3();
-  private boolean dirty = true, previousExploded, previousHeat, cameraReady;
-  private float previousSpacing = 85, transition = 1, explode, sceneRadius = 500;
+  private boolean dirty = true, previousHeat, cameraReady;
+  private float transition = 1, explode, sceneRadius = 500;
   private float tourTime;
   private int tourStop = -1;
   private List<Building> tourPoints = List.of();
@@ -243,10 +247,36 @@ public final class CityRenderer implements AutoCloseable {
           inset.add(new CityGenerator.Point(cx + (p.x() - cx) * .86f, cz + (p.z() - cz) * .86f));
         mesh.surface(inset, -.9f, 0, GREEN);
       }
+      if (block.park()) {
+        var corners = block.outline();
+        var a = corners.get(0);
+        var b = corners.get(1);
+        var c = corners.get(2);
+        var d = corners.get(3);
+        float cx = (a.x() + b.x() + c.x() + d.x()) / 4, cz = (a.z() + b.z() + c.z() + d.z()) / 4;
+        parkPath(
+            (a.x() + b.x()) / 2, (a.z() + b.z()) / 2, (c.x() + d.x()) / 2, (c.z() + d.z()) / 2);
+        parkPath(
+            (a.x() + d.x()) / 2, (a.z() + d.z()) / 2, (b.x() + c.x()) / 2, (b.z() + c.z()) / 2);
+        mesh.transform(cx, cz, 0);
+        fixed(0, -.75f, 0, 9, .7f, 9, 0, ROOF);
+        fixed(0, -.02f, 0, 7, .08f, 7, 0, Color.valueOf("4FA9BD"));
+        fixed(0, 0, 0, 1.6f, 2, 1.6f, 0, ROOF);
+        for (float side : new float[] {-1, 1}) {
+          fixed(side * 12, 0, 5, 6, .65f, 2, 0, TRUNK);
+          fixed(side * 12, .65f, 5.8f, 6, 1.6f, .45f, 0, TRUNK);
+          fixed(side * 12, -.8f, 5, .5f, .8f, 1.7f, 0, ROOF);
+        }
+        mesh.transform(0, 0, 0);
+      }
       for (var p : block.trees()) {
-        fixed(p.x(), -.8f, p.z(), 1.3f, 7, 1.3f, 0, TRUNK);
-        fixed(p.x(), 4, p.z(), 6, 7, 6, 0, GREEN);
-        fixed(p.x(), 9, p.z(), 4, 3, 4, 0, GREEN);
+        int treeSeed = Float.floatToIntBits(p.x()) ^ Float.floatToIntBits(p.z());
+        float size = .85f + Math.floorMod(treeSeed, 7) * .09f;
+        Color foliage =
+            new Color(GREEN).lerp(Color.valueOf("78A75C"), Math.floorMod(treeSeed, 5) * .13f);
+        fixed(p.x(), -.8f, p.z(), 1.3f, 6 * size, 1.3f, 0, TRUNK);
+        fixed(p.x(), 3 * size, p.z(), 7 * size, 6 * size, 7 * size, 0, foliage);
+        fixed(p.x(), 8 * size, p.z(), 4.5f * size, 3 * size, 4.5f * size, 0, foliage);
       }
     }
     for (var road : plan.roads()) {
@@ -270,14 +300,23 @@ public final class CityRenderer implements AutoCloseable {
           for (float stripe = -road.width() / 2 + 1; stripe < road.width() / 2 - 1; stripe += 3)
             fixed(length * .15f, -.57f, stripe, 4, .04f, 1.4f, 0, ROOF);
         }
-        if (road.avenue() && i % 7 == 3) {
-          float curb = road.width() / 2 - 2.3f;
-          fixed(0, -.57f, curb, 4.8f, 1.8f, 2, 0, MARKING);
-          fixed(0, 1.23f, curb, 2.5f, .8f, 1.7f, 0, ASPHALT);
+        if (road.avenue() && i % 4 == 2) {
+          float curb = road.width() / 2 + 1.5f;
+          fixed(0, -.7f, curb, .6f, 9, .6f, 0, ROOF);
+          fixed(0, 8.3f, curb - 1.2f, .5f, .5f, 3, 0, ROOF);
+          fixed(0, 8.1f, curb - 2.3f, 1.1f, .35f, 1.3f, 0, Color.valueOf("FFE7A0"));
         }
         travelled += length;
       }
     }
+    mesh.transform(0, 0, 0);
+  }
+
+  private void parkPath(float ax, float az, float bx, float bz) {
+    float length = (float) Math.hypot(bx - ax, bz - az);
+    mesh.transform(
+        (ax + bx) / 2, (az + bz) / 2, (float) Math.toDegrees(Math.atan2(bz - az, bx - ax)));
+    fixed(0, -.85f, 0, length * .78f, .12f, 4, 0, Color.valueOf("BAAC8A"));
     mesh.transform(0, 0, 0);
   }
 
@@ -378,11 +417,7 @@ public final class CityRenderer implements AutoCloseable {
 
   public void render(float dt, int left, int bottom, int width, int height) {
     dt = MathUtils.clamp(dt, 0, .1f);
-    if (previousExploded != exploded || previousSpacing != spacing) {
-      reset();
-      previousExploded = exploded;
-      previousSpacing = spacing;
-    }
+    if (living && !reducedMotion) lifeTime += dt;
     if (previousHeat != heat) {
       dirty = true;
       previousHeat = heat;
@@ -428,7 +463,9 @@ public final class CityRenderer implements AutoCloseable {
       b.localBounds.min.set(-b.cell.width() / 2, y, -b.cell.depth() / 2);
       b.localBounds.max.set(b.cell.width() / 2, y + b.height + 12, b.cell.depth() / 2);
       b.localBounds.update();
-      if (Math.abs(camera.position.x - b.cell.x()) < w / 2 + 5
+      if (!exploded
+          && explode < .001f
+          && Math.abs(camera.position.x - b.cell.x()) < w / 2 + 5
           && Math.abs(camera.position.z - b.cell.z()) < d / 2 + 5)
         camera.position.y = Math.max(camera.position.y, y + b.height + 15);
     }
@@ -447,7 +484,13 @@ public final class CityRenderer implements AutoCloseable {
     Gdx.gl.glEnable(GL20.GL_CULL_FACE);
     Gdx.gl.glCullFace(GL20.GL_BACK);
     if (dirty) rebuild();
-    mesh.render(camera, progress, spacing * explode, selected() == null ? -1 : selected().renderId);
+    mesh.render(
+        camera,
+        progress,
+        spacing * explode,
+        selected() == null ? -1 : selected().renderId,
+        (float) lifeTime);
+    traffic.render(camera, lifeTime);
     Gdx.gl.glDisable(GL20.GL_CULL_FACE);
     HdpiUtils.glViewport(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
   }
@@ -472,5 +515,6 @@ public final class CityRenderer implements AutoCloseable {
 
   public void close() {
     mesh.close();
+    traffic.close();
   }
 }

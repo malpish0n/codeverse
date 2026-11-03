@@ -15,6 +15,21 @@ class CityGeneratorTest {
   }
 
   @Test
+  void parksHaveDenseGreeneryWithClearCentralPaths() {
+    int parks = 0;
+    for (int region = 0; region < 8; region++) {
+      var generated = new CityGenerator(Settings.defaults()).region(region);
+      for (var block : generated.blocks())
+        if (block.park()) {
+          parks++;
+          assertTrue(block.trees().size() >= 8, "Park is too sparse: " + block.trees().size());
+          assertTrue(block.lots().isEmpty());
+        }
+    }
+    assertTrue(parks > 0);
+  }
+
+  @Test
   void seedAndProfilesProduceReproducibleDifferentCities() {
     var a = new StableLayout();
     var b = new StableLayout();
